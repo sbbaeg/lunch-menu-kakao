@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# .env.local 파일
+
+# 카카오 디벨로퍼스에서 복사한 JavaScript 키
+NEXT_PUBLIC_KAKAOMAP_JS_KEY=b1e093a79b0462697357a22065985ff3
+
+# 카카오 디벨로퍼스에서 복사한 REST API 키
+KAKAO_REST_API_KEY=92f1a43539bd8c0acfe24beada269e92
