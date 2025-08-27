@@ -93,7 +93,7 @@ export default function Home() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.) 🤔</h1>
+      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (feat.kakao map)</h1>
       <div ref={mapContainer} style={{ width: '100%', maxWidth: '800px', height: '400px', marginBottom: '20px', border: '1px solid #ccc' }}></div>
       <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg">
         {loading ? '주변 맛집 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
