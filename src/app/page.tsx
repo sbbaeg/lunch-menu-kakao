@@ -1,11 +1,10 @@
-// src/app/page.tsx
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// 파일 경로: src/app/page.tsx
 
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 
 declare global {
   interface Window {
@@ -19,6 +18,7 @@ interface KakaoPlaceItem {
   road_address_name: string;
   x: string;
   y: string;
+  place_url: string;
 }
 
 interface KakaoSearchResponse {
@@ -28,6 +28,8 @@ interface KakaoSearchResponse {
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
+  // (수정!) 미니맵을 위한 ref 추가
+  const miniMapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<any>(null);
   const markerInstance = useRef<any>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +54,25 @@ export default function Home() {
       });
     };
   }, []);
+  
+  // (수정!) recommendation 상태가 변경될 때마다 미니맵을 그리는 로직 추가
+  useEffect(() => {
+    if (recommendation && miniMapContainer.current) {
+      const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
+      const miniMapOption = {
+        center: placePosition,
+        level: 3,
+        draggable: false, // 미니맵은 드래그, 확대/축소 불가
+        zoomable: false,
+      };
+      const miniMap = new window.kakao.maps.Map(miniMapContainer.current, miniMapOption);
+      const miniMarker = new window.kakao.maps.Marker({
+        position: placePosition,
+      });
+      miniMarker.setMap(miniMap);
+    }
+  }, [recommendation]);
+
 
   const handleRecommendClick = () => {
     setLoading(true);
@@ -59,44 +80,58 @@ export default function Home() {
     if (markerInstance.current) {
       markerInstance.current.setMap(null);
     }
+    
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 5000,
+      maximumAge: 0,
+    };
 
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      try {
-        const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
-        const data: KakaoSearchResponse = await response.json();
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
+          const data: KakaoSearchResponse = await response.json();
 
-        if (!data.documents || data.documents.length === 0) {
-          alert('주변에 추천할 맛집을 찾지 못했어요!');
-          return;
+          if (!data.documents || data.documents.length === 0) {
+            alert('주변에 추천할 음식점을 찾지 못했어요!');
+            return;
+          }
+
+          const randomIndex = Math.floor(Math.random() * data.documents.length);
+          const randomPlace = data.documents[randomIndex];
+          setRecommendation(randomPlace);
+
+          if (mapInstance.current) {
+            const placePosition = new window.kakao.maps.LatLng(Number(randomPlace.y), Number(randomPlace.x));
+            mapInstance.current.setCenter(placePosition);
+            markerInstance.current = new window.kakao.maps.Marker({
+              position: placePosition,
+            });
+            markerInstance.current.setMap(mapInstance.current);
+          }
+        } catch (error) {
+          console.error('Error:', error);
+        } finally {
+          setLoading(false);
         }
-
-        const randomIndex = Math.floor(Math.random() * data.documents.length);
-        const randomPlace = data.documents[randomIndex];
-        setRecommendation(randomPlace);
-
-        if (mapInstance.current) {
-          const placePosition = new window.kakao.maps.LatLng(Number(randomPlace.y), Number(randomPlace.x));
-          mapInstance.current.setCenter(placePosition);
-          markerInstance.current = new window.kakao.maps.Marker({
-            position: placePosition,
-          });
-          markerInstance.current.setMap(mapInstance.current);
-        }
-      } catch (error) {
-        console.error('Error:', error);
-      } finally {
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
         setLoading(false);
-      }
-    });
+      },
+      options
+    );
   };
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (feat.kakao map)</h1>
+      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.) 🤔</h1>
       <div ref={mapContainer} style={{ width: '100%', maxWidth: '800px', height: '400px', marginBottom: '20px', border: '1px solid #ccc' }}></div>
       <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg">
-        {loading ? '주변 맛집 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
+        {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
       </Button>
       {recommendation && (
         <Card className="mt-4 w-full max-w-md">
@@ -104,9 +139,18 @@ export default function Home() {
             <CardTitle>{recommendation.place_name}</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* (수정!) 미니맵을 표시할 div 추가 */}
+            <div ref={miniMapContainer} style={{ width: '100%', height: '150px', marginBottom: '1rem' }}></div>
             <p><strong>카테고리:</strong> {recommendation.category_name}</p>
             <p><strong>주소:</strong> {recommendation.road_address_name}</p>
           </CardContent>
+          <CardFooter>
+            <Button asChild className="w-full">
+              <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
+                카카오맵에서 상세보기
+              </a>
+            </Button>
+          </CardFooter>
         </Card>
       )}
     </main>
