@@ -246,8 +246,7 @@ export default function Home() {
                       setIsRouletteOpen(false);
                       updateMapAndCard(rouletteItems[prizeIndex]);
                     }}
-                    // (수정!) designOptions, className, motion 등 불필요한 속성 제거
-                    type='horizontal'
+                    // (수정!) designOptions 속성을 제거합니다.
                   />
             )}
             <Button onClick={handleSpinClick} disabled={start} className="w-full max-w-[150px]">
