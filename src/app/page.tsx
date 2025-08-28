@@ -6,15 +6,24 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 
-// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 사용하도록 명시
+// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 구체적으로 정의합니다.
+// 필요한 최소한의 타입만 정의하여 복잡성을 줄입니다.
+type KakaoMap = {
+  setCenter: (latlng: any) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = any;
+
 declare global {
   interface Window {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: any) => any;
-        LatLng: new (lat: number, lng: number) => any;
-        Marker: new (options: any) => any;
+        Map: new (container: HTMLElement, options: any) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: any) => KakaoMarker;
       };
     };
   }
@@ -37,9 +46,9 @@ export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const miniMapContainer = useRef<HTMLDivElement | null>(null);
-  // (수정!) any 대신 카카오맵 타입을 사용
-  const mapInstance = useRef<any>(null);
-  const markerInstance = useRef<any>(null);
+  // (수정!) any 대신 위에서 정의한 타입을 사용합니다.
+  const mapInstance = useRef<KakaoMap | null>(null);
+  const markerInstance = useRef<KakaoMarker | null>(null);
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
 
@@ -64,7 +73,7 @@ export default function Home() {
   }, []);
   
   useEffect(() => {
-    if (recommendation && miniMapContainer.current) {
+    if (recommendation && miniMapContainer.current && window.kakao) {
       const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
       const miniMapOption = {
         center: placePosition,
