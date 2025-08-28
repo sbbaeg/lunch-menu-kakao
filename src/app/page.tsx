@@ -22,7 +22,6 @@ type KakaoMap = {
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
 };
-// (수정!) 빈 객체 대신 구체적인 타입을 명시합니다.
 type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
@@ -67,7 +66,7 @@ export default function Home() {
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
   const [start, setStart] = useState(false);
-  const [winningPrize, setWinningPrize] = useState<Prize | null>(null);
+  const [prizeIndex, setPrizeIndex] = useState(0); // (수정!) winningPrize -> prizeIndex
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -143,7 +142,6 @@ export default function Home() {
           setRouletteItems(restaurants.slice(0, 5));
           setIsRouletteOpen(true);
           setStart(false);
-          setWinningPrize(null);
         } else {
             alert('주변에 추첨할 음식점이 5개 미만입니다.');
         }
@@ -158,9 +156,8 @@ export default function Home() {
   
   const handleSpinClick = () => {
     if (start) return;
-    const randomIndex = Math.floor(Math.random() * rouletteItems.length);
-    const winner = prizes[randomIndex];
-    setWinningPrize(winner);
+    const newPrizeIndex = Math.floor(Math.random() * rouletteItems.length);
+    setPrizeIndex(newPrizeIndex);
     setStart(true);
   };
 
@@ -198,7 +195,7 @@ export default function Home() {
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
 
-          <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
+          <div className="w-full md:w-1-3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
               <Button onClick={handleSimpleRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
@@ -245,13 +242,15 @@ export default function Home() {
                   <RoulettePro
                     prizes={prizes}
                     start={start}
-                    winningPrize={winningPrize}
-                    onPrizeSelect={(prize) => {
-                      const selectedPlace = rouletteItems.find(item => item.place_url === prize.id);
-                      if (selectedPlace) {
-                        updateMapAndCard(selectedPlace);
-                      }
+                    // (수정!) winningPrize -> prizeIndex
+                    prizeIndex={prizeIndex} 
+                    onPrizeSelect={() => {
+                      // onPrizeSelect는 당첨 "후"에 호출되므로, 상태 업데이트는 onStopSpinning에서 처리
+                    }}
+                    onStopSpinning={() => {
+                      setStart(false);
                       setIsRouletteOpen(false);
+                      updateMapAndCard(rouletteItems[prizeIndex]);
                     }}
                     designOptions={{
                         prizeItemWidth: 120,
