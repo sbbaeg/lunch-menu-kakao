@@ -3,15 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
-// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 구체적으로 정의합니다.
+// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 구체적으로 정의
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -52,8 +45,6 @@ interface KakaoSearchResponse {
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
-  const miniMapContainer = useRef<HTMLDivElement | null>(null);
-  // (수정!) any 대신 위에서 정의한 타입을 사용합니다.
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,24 +69,6 @@ export default function Home() {
       });
     };
   }, []);
-  
-  useEffect(() => {
-    if (recommendation && miniMapContainer.current && window.kakao) {
-      const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
-      const miniMapOption = {
-        center: placePosition,
-        level: 3,
-        draggable: false,
-        zoomable: false,
-      };
-      const miniMap = new window.kakao.maps.Map(miniMapContainer.current, miniMapOption);
-      const miniMarker = new window.kakao.maps.Marker({
-        position: placePosition,
-      });
-      miniMarker.setMap(miniMap);
-    }
-  }, [recommendation]);
-
 
   const handleRecommendClick = () => {
     setLoading(true);
@@ -150,49 +123,45 @@ export default function Home() {
   };
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
+    // (수정!) 전체 레이아웃을 잡는 main 태그
+    <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.)</h1>
-      <div ref={mapContainer} style={{ width: '100%', maxWidth: '800px', height: '400px', marginBottom: '20px', border: '1px solid #ccc' }}></div>
-      <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg">
-        {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
-      </Button>
       
-      <Dialog>
-        {recommendation && (
-          <Card className="mt-4 w-full max-w-md">
-            <CardHeader>
-              <CardTitle>{recommendation.place_name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div ref={miniMapContainer} style={{ width: '100%', height: '150px', marginBottom: '1rem' }}></div>
-              <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-              <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-            </CardContent>
-            <CardFooter>
-              <DialogTrigger asChild>
-                <Button className="w-full">
-                  상세 정보 팝업으로 보기
-                </Button>
-              </DialogTrigger>
-            </CardFooter>
-          </Card>
-        )}
+      {/* (수정!) PC에서는 가로, 모바일에서는 세로로 배치되는 컨테이너 */}
+      <div className="w-full max-w-6xl flex flex-col md:flex-row gap-8">
         
-        <DialogContent className="w-[90vw] h-[80vh] max-w-4xl flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{recommendation?.place_name}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1">
-            <iframe
-              src={recommendation?.place_url}
-              title={recommendation?.place_name}
-              width="100%"
-              height="100%"
-              style={{ border: 'none' }}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+        {/* (수정!) 지도 영역 */}
+        <div className="w-full md:w-2/3 h-80 md:h-auto rounded-lg overflow-hidden border">
+          <div ref={mapContainer} className="w-full h-full"></div>
+        </div>
+
+        {/* (수정!) 추천 버튼 및 결과 카드 영역 */}
+        <div className="w-full md:w-1/3 flex flex-col items-center">
+          <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg" className="w-full max-w-sm mb-4">
+            {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
+          </Button>
+          
+          {recommendation && (
+            <Card className="w-full max-w-sm">
+              <CardHeader>
+                <CardTitle>{recommendation.place_name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+              </CardContent>
+              {/* (수정!) 상세보기 버튼을 팝업이 아닌 일반 링크로 변경 */}
+              <CardFooter>
+                <Button asChild className="w-full">
+                  <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
+                    카카오맵에서 상세보기
+                  </a>
+                </Button>
+              </CardFooter>
+            </Card>
+          )}
+        </div>
+      </div>
     </main>
   );
 }
