@@ -1,4 +1,4 @@
-// src/app/api/recommend/route.ts
+// 파일 경로: src/app/api/recommend/route.ts
 
 import { NextResponse } from 'next/server';
 
@@ -12,8 +12,9 @@ export async function GET(request: Request) {
   }
 
   try {
+    // (수정!) 검색 반경(radius)을 800m (도보 10분 거리)로 확장합니다.
     const response = await fetch(
-      `https://dapi.kakao.com/v2/local/search/keyword.json?query=맛집&y=${lat}&x=${lng}&radius=2000`,
+      `https://dapi.kakao.com/v2/local/search/keyword.json?query=음식점&y=${lat}&x=${lng}&radius=800`,
       {
         headers: {
           Authorization: `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
 
   } catch (error) {
+    console.error('Kakao API Error:', error);
     return NextResponse.json({ error: 'Failed to fetch data from Kakao API' }, { status: 500 });
   }
 }
