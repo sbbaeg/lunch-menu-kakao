@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-// Dialog 컴포넌트들을 import 합니다.
 import {
   Dialog,
   DialogContent,
@@ -12,9 +11,28 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 구체적으로 정의합니다.
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {
+  getLat: () => number;
+  getLng: () => number;
+};
+
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+      };
+    };
   }
 }
 
@@ -35,8 +53,9 @@ export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const miniMapContainer = useRef<HTMLDivElement | null>(null);
-  const mapInstance = useRef<any>(null);
-  const markerInstance = useRef<any>(null);
+  // (수정!) any 대신 위에서 정의한 타입을 사용합니다.
+  const mapInstance = useRef<KakaoMap | null>(null);
+  const markerInstance = useRef<KakaoMarker | null>(null);
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
 
@@ -61,7 +80,7 @@ export default function Home() {
   }, []);
   
   useEffect(() => {
-    if (recommendation && miniMapContainer.current) {
+    if (recommendation && miniMapContainer.current && window.kakao) {
       const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
       const miniMapOption = {
         center: placePosition,
@@ -132,13 +151,12 @@ export default function Home() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.) 🤔</h1>
+      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.)</h1>
       <div ref={mapContainer} style={{ width: '100%', maxWidth: '800px', height: '400px', marginBottom: '20px', border: '1px solid #ccc' }}></div>
       <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg">
         {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
       </Button>
       
-      {/* Dialog 컴포넌트로 추천 카드 전체를 감싸줍니다. */}
       <Dialog>
         {recommendation && (
           <Card className="mt-4 w-full max-w-md">
@@ -151,7 +169,6 @@ export default function Home() {
               <p><strong>주소:</strong> {recommendation.road_address_name}</p>
             </CardContent>
             <CardFooter>
-              {/* Button을 DialogTrigger로 감싸 팝업을 열게 합니다. */}
               <DialogTrigger asChild>
                 <Button className="w-full">
                   상세 정보 팝업으로 보기
@@ -161,12 +178,10 @@ export default function Home() {
           </Card>
         )}
         
-        {/* 팝업이 열렸을 때 보여줄 내용을 정의합니다. */}
         <DialogContent className="w-[90vw] h-[80vh] max-w-4xl flex flex-col">
           <DialogHeader>
             <DialogTitle>{recommendation?.place_name}</DialogTitle>
           </DialogHeader>
-          {/* iframe을 사용해 카카오맵 페이지를 팝업 안에 보여줍니다. */}
           <div className="flex-1">
             <iframe
               src={recommendation?.place_url}
