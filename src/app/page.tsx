@@ -9,28 +9,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import dynamic from 'next/dynamic';
+import { motion } from 'framer-motion';
 
-const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
+// (수정!) 새로운 룰렛 라이브러리 import
+import RoulettePro from 'react-roulette-pro';
+import 'react-roulette-pro/dist/index.css';
 
-type KakaoMap = {
-  setCenter: (latlng: KakaoLatLng) => void;
-};
-type KakaoMarker = {
-  setMap: (map: KakaoMap | null) => void;
-};
-type KakaoLatLng = {};
+
+type KakaoMap = any;
+type KakaoMarker = any;
 
 declare global {
   interface Window {
-    kakao: {
-      maps: {
-        load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
-        LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
-      };
-    };
+    kakao: any;
   }
 }
 
@@ -47,13 +38,23 @@ interface KakaoSearchResponse {
   documents: KakaoPlaceItem[];
 }
 
+// 룰렛 아이템 타입 정의
+interface Prize {
+  id: string;
+  image: string; // 이미지 대신 텍스트를 사용하므로 이 값은 사용되지 않음
+  text: string;
+}
+
+
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
-  const [mustSpin, setMustSpin] = useState(false);
-  const [prizeNumber, setPrizeNumber] = useState(0);
+  // (추가!) 룰렛 관련 상태 추가
+  const [start, setStart] = useState(false);
+  const [winningPrize, setWinningPrize] = useState<Prize | null>(null);
+
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -71,8 +72,7 @@ export default function Home() {
       window.kakao.maps.load(() => {
         if (mapContainer.current) {
           const mapOption = {
-            // 현재 위치 대전(36.3504, 127.3845)을 초기 중심으로 설정
-            center: new window.kakao.maps.LatLng(36.3504, 127.3845),
+            center: new window.kakao.maps.LatLng(37.5665, 126.9780),
             level: 3,
           };
           mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
@@ -88,8 +88,8 @@ export default function Home() {
       throw new Error('API call failed');
     }
     const data: KakaoSearchResponse = await response.json();
-    if (!data.documents || data.documents.length === 0) {
-      alert('주변에 추천할 음식점을 찾지 못했어요!');
+    if (!data.documents || data.documents.length < 5) {
+      alert('주변에 추천할 음식점이 5개 미만입니다.');
       return [];
     }
     return data.documents;
@@ -130,6 +130,8 @@ export default function Home() {
         if (restaurants.length >= 5) {
           setRouletteItems(restaurants.slice(0, 5));
           setIsRouletteOpen(true);
+          setStart(false); // 룰렛 초기화
+          setWinningPrize(null); // 당첨 결과 초기화
         } else {
             alert('주변에 추첨할 음식점이 5개 미만입니다. 더 많은 음식점을 찾아주세요!');
         }
@@ -143,11 +145,10 @@ export default function Home() {
   };
   
   const handleSpinClick = () => {
-    if (!mustSpin) {
-      const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
-      setPrizeNumber(newPrizeNumber);
-      setMustSpin(true);
-    }
+    const randomIndex = Math.floor(Math.random() * rouletteItems.length);
+    const winner = prizes[randomIndex];
+    setWinningPrize(winner);
+    setStart(true);
   };
 
   const updateMapAndCard = (place: KakaoPlaceItem) => {
@@ -168,7 +169,11 @@ export default function Home() {
     setLoading(false);
   };
 
-  const rouletteData = rouletteItems.map(item => ({ option: item.place_name }));
+  const prizes: Prize[] = rouletteItems.map(item => ({
+    id: item.place_url,
+    text: item.place_name,
+    image: 'DEFAULT_IMAGE' // 이미지는 사용하지 않지만 필수 속성이라 추가
+  }));
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -225,31 +230,28 @@ export default function Home() {
             <DialogTitle className="text-center text-2xl mb-4">룰렛을 돌려 오늘 점심을 선택하세요!</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col justify-center items-center space-y-6">
-            {rouletteData.length > 0 ? (
-              <Wheel
-                mustStartSpinning={mustSpin}
-                prizeNumber={prizeNumber}
-                data={rouletteData}
-                backgroundColors={['#3e3e3e', '#df3428']}
-                textColors={['#ffffff']}
-                outerBorderColor={'#3e3e3e'}
-                outerBorderWidth={5}
-                innerBorderColor={'#3e3e3e'}
-                innerBorderWidth={10}
-                radiusLineColor={'#3e3e3e'}
-                radiusLineWidth={5}
-                fontSize={16}
-                perpendicularText={true}
-                onStopSpinning={() => {
-                  setMustSpin(false);
-                  setIsRouletteOpen(false);
-                  updateMapAndCard(rouletteItems[prizeNumber]);
-                }}
-              />
-            ) : (
-                <p className="text-gray-500">룰렛에 들어갈 음식점을 불러오는 중...</p>
+            {prizes.length > 0 && (
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.5 }}>
+                  <RoulettePro
+                    prizes={prizes}
+                    start={start}
+                    winningPrize={winningPrize}
+                    onPrizeSelect={(prize) => {
+                      const selectedPlace = rouletteItems.find(item => item.place_url === prize.id);
+                      if (selectedPlace) {
+                        updateMapAndCard(selectedPlace);
+                      }
+                      setIsRouletteOpen(false);
+                    }}
+                    designOptions={{
+                        prizeItemWidth: 120,
+                        prizeItemHeight: 120,
+                        prizesWithText: true,
+                    }}
+                  />
+                </motion.div>
             )}
-            <Button onClick={handleSpinClick} disabled={mustSpin || rouletteItems.length === 0} className="w-full max-w-[150px]">
+            <Button onClick={handleSpinClick} disabled={start} className="w-full max-w-[150px]">
               돌리기
             </Button>
           </div>
