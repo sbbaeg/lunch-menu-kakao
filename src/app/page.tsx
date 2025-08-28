@@ -45,6 +45,8 @@ interface KakaoSearchResponse {
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
+  // 미니맵은 이제 사용하지 않으므로 제거
+  // const miniMapContainer = useRef<HTMLDivElement | null>(null); 
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,7 +62,7 @@ export default function Home() {
       window.kakao.maps.load(() => {
         if (mapContainer.current) {
           const mapOption = {
-            center: new window.kakao.maps.LatLng(37.5665, 126.9780),
+            center: new window.kakao.maps.LatLng(37.5665, 126.9780), // 초기 중심 좌표 (서울 시청)
             level: 3,
           };
           mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
@@ -123,20 +125,20 @@ export default function Home() {
   };
 
   return (
-    // (수정!) 전체 레이아웃을 잡는 main 태그
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.)</h1>
       
-      {/* (수정!) PC에서는 가로, 모바일에서는 세로로 배치되는 컨테이너 */}
-      <div className="w-full max-w-6xl flex flex-col md:flex-row gap-8">
+      {/* PC에서는 가로(flex-row), 모바일에서는 세로(flex-col)로 배치되는 컨테이너 */}
+      {/* md:h-[600px] 추가하여 PC에서 전체 컨테이너 높이 지정 */}
+      <div className="w-full max-w-6xl flex flex-col md:flex-row gap-8 md:h-[600px]">
         
-        {/* (수정!) 지도 영역 */}
-        <div className="w-full md:w-2/3 h-80 md:h-auto rounded-lg overflow-hidden border">
+        {/* 지도 영역 - 모바일에서는 고정 높이, PC에서는 남은 공간을 모두 차지 (h-full과 flex-grow) */}
+        <div className="w-full h-80 md:h-full md:flex-grow rounded-lg overflow-hidden border">
           <div ref={mapContainer} className="w-full h-full"></div>
         </div>
 
-        {/* (수정!) 추천 버튼 및 결과 카드 영역 */}
-        <div className="w-full md:w-1/3 flex flex-col items-center">
+        {/* 추천 버튼 및 결과 카드 영역 - PC에서는 고정 너비 (md:w-1/3) */}
+        <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start">
           <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg" className="w-full max-w-sm mb-4">
             {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
           </Button>
@@ -147,10 +149,10 @@ export default function Home() {
                 <CardTitle>{recommendation.place_name}</CardTitle>
               </CardHeader>
               <CardContent>
+                {/* 미니맵이 없으므로 해당 div 제거 */}
                 <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                 <p><strong>주소:</strong> {recommendation.road_address_name}</p>
               </CardContent>
-              {/* (수정!) 상세보기 버튼을 팝업이 아닌 일반 링크로 변경 */}
               <CardFooter>
                 <Button asChild className="w-full">
                   <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
