@@ -6,9 +6,17 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 
+// (수정!) any 대신 카카오맵 API의 실제 객체 타입을 사용하도록 명시
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: any) => any;
+        LatLng: new (lat: number, lng: number) => any;
+        Marker: new (options: any) => any;
+      };
+    };
   }
 }
 
@@ -28,8 +36,8 @@ interface KakaoSearchResponse {
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const mapContainer = useRef<HTMLDivElement | null>(null);
-  // (수정!) 미니맵을 위한 ref 추가
   const miniMapContainer = useRef<HTMLDivElement | null>(null);
+  // (수정!) any 대신 카카오맵 타입을 사용
   const mapInstance = useRef<any>(null);
   const markerInstance = useRef<any>(null);
   const [loading, setLoading] = useState(false);
@@ -55,14 +63,13 @@ export default function Home() {
     };
   }, []);
   
-  // (수정!) recommendation 상태가 변경될 때마다 미니맵을 그리는 로직 추가
   useEffect(() => {
     if (recommendation && miniMapContainer.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
       const miniMapOption = {
         center: placePosition,
         level: 3,
-        draggable: false, // 미니맵은 드래그, 확대/축소 불가
+        draggable: false,
         zoomable: false,
       };
       const miniMap = new window.kakao.maps.Map(miniMapContainer.current, miniMapOption);
@@ -128,7 +135,7 @@ export default function Home() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.) 🤔</h1>
+      <h1 className="text-3xl font-bold mb-4">오늘 뭐 먹지? (카카오 ver.)</h1>
       <div ref={mapContainer} style={{ width: '100%', maxWidth: '800px', height: '400px', marginBottom: '20px', border: '1px solid #ccc' }}></div>
       <Button onClick={handleRecommendClick} disabled={loading || !isMapReady} size="lg">
         {loading ? '주변 음식점 검색 중...' : (isMapReady ? '점심 메뉴 추천받기!' : '지도 로딩 중...')}
@@ -139,7 +146,6 @@ export default function Home() {
             <CardTitle>{recommendation.place_name}</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* (수정!) 미니맵을 표시할 div 추가 */}
             <div ref={miniMapContainer} style={{ width: '100%', height: '150px', marginBottom: '1rem' }}></div>
             <p><strong>카테고리:</strong> {recommendation.category_name}</p>
             <p><strong>주소:</strong> {recommendation.road_address_name}</p>
