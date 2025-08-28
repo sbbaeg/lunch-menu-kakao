@@ -15,13 +15,14 @@ import dynamic from 'next/dynamic';
 const RoulettePro = dynamic(() => import('react-roulette-pro'), { ssr: false });
 import 'react-roulette-pro/dist/index.css';
 
-// 카카오맵 관련 타입을 명확하게 정의
+// 카카오맵 관련 타입을 명확하게 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
 };
+// (수정!) 빈 객체 대신 구체적인 타입을 명시합니다.
 type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
@@ -32,7 +33,7 @@ declare global {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
       };
@@ -53,6 +54,7 @@ interface KakaoSearchResponse {
   documents: KakaoPlaceItem[];
 }
 
+// 룰렛 아이템 타입 정의
 interface Prize {
   id: string;
   image: string;
@@ -81,21 +83,17 @@ export default function Home() {
     document.head.appendChild(script);
     script.onload = () => {
       window.kakao.maps.load(() => {
-        setIsMapReady(true);
+        if (mapContainer.current) {
+          const mapOption = {
+            center: new window.kakao.maps.LatLng(36.3504, 127.3845),
+            level: 3,
+          };
+          mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
+          setIsMapReady(true);
+        }
       });
     };
   }, []);
-
-  // (수정!) isMapReady 상태에 따라 지도 인스턴스를 생성하는 useEffect 분리
-  useEffect(() => {
-    if (isMapReady && mapContainer.current && !mapInstance.current) {
-      const mapOption = {
-        center: new window.kakao.maps.LatLng(36.3504, 127.3845),
-        level: 3,
-      };
-      mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
-    }
-  }, [isMapReady]); // isMapReady가 true가 되면 이 useEffect가 실행됨
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
@@ -122,7 +120,7 @@ export default function Home() {
           const randomPlace = restaurants[randomIndex];
           updateMapAndCard(randomPlace);
         } else {
-          alert('주변에 추천할 음식점을 찾지 못했어요!');
+            alert('주변에 추천할 음식점을 찾지 못했어요!');
         }
       } catch (error) {
         console.error('Error:', error);
@@ -147,7 +145,7 @@ export default function Home() {
           setStart(false);
           setWinningPrize(null);
         } else {
-          alert('주변에 추첨할 음식점이 5개 미만입니다.');
+            alert('주변에 추첨할 음식점이 5개 미만입니다.');
         }
       } catch (error) {
         console.error('Error:', error);
