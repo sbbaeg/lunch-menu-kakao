@@ -10,18 +10,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
 
-// (수정!) 새로운 룰렛 라이브러리 import
-import RoulettePro from 'react-roulette-pro';
+// 새로운 룰렛 라이브러리 및 CSS import
+const RoulettePro = dynamic(() => import('react-roulette-pro'), { ssr: false });
 import 'react-roulette-pro/dist/index.css';
 
-
-type KakaoMap = any;
-type KakaoMarker = any;
+// 카카오맵 관련 타입을 명확하게 정의합니다.
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {}; // LatLng 객체는 생성자로만 사용하므로 상세 타입은 불필요
 
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+      };
+    };
   }
 }
 
@@ -41,20 +54,17 @@ interface KakaoSearchResponse {
 // 룰렛 아이템 타입 정의
 interface Prize {
   id: string;
-  image: string; // 이미지 대신 텍스트를 사용하므로 이 값은 사용되지 않음
+  image: string;
   text: string;
 }
-
 
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
-  // (추가!) 룰렛 관련 상태 추가
   const [start, setStart] = useState(false);
   const [winningPrize, setWinningPrize] = useState<Prize | null>(null);
-
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -72,7 +82,7 @@ export default function Home() {
       window.kakao.maps.load(() => {
         if (mapContainer.current) {
           const mapOption = {
-            center: new window.kakao.maps.LatLng(37.5665, 126.9780),
+            center: new window.kakao.maps.LatLng(36.3504, 127.3845),
             level: 3,
           };
           mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
@@ -88,8 +98,7 @@ export default function Home() {
       throw new Error('API call failed');
     }
     const data: KakaoSearchResponse = await response.json();
-    if (!data.documents || data.documents.length < 5) {
-      alert('주변에 추천할 음식점이 5개 미만입니다.');
+    if (!data.documents || data.documents.length === 0) {
       return [];
     }
     return data.documents;
@@ -130,10 +139,10 @@ export default function Home() {
         if (restaurants.length >= 5) {
           setRouletteItems(restaurants.slice(0, 5));
           setIsRouletteOpen(true);
-          setStart(false); // 룰렛 초기화
-          setWinningPrize(null); // 당첨 결과 초기화
+          setStart(false);
+          setWinningPrize(null);
         } else {
-            alert('주변에 추첨할 음식점이 5개 미만입니다. 더 많은 음식점을 찾아주세요!');
+            alert('주변에 추첨할 음식점이 5개 미만입니다.');
         }
       } catch (error) {
         console.error('Error:', error);
@@ -172,7 +181,7 @@ export default function Home() {
   const prizes: Prize[] = rouletteItems.map(item => ({
     id: item.place_url,
     text: item.place_name,
-    image: 'DEFAULT_IMAGE' // 이미지는 사용하지 않지만 필수 속성이라 추가
+    image: 'DEFAULT_IMAGE'
   }));
 
   return (
@@ -181,18 +190,16 @@ export default function Home() {
         <h1 className="text-3xl font-bold text-center">오늘 뭐 먹지? (카카오 ver.)</h1>
         
         <div className="flex flex-col md:flex-row gap-6 md:h-[600px]">
-          {/* 지도 영역 */}
           <div className="w-full h-80 md:h-full md:flex-grow rounded-lg overflow-hidden border shadow-sm">
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
 
-          {/* 추천 버튼 및 결과 카드 영역 */}
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
               <Button onClick={handleSimpleRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
               </Button>
-              <Button onClick={handleRouletteRecommend} disabled={loading || !isMapReady || rouletteItems.length < 5} size="lg" className="flex-1">
+              <Button onClick={handleRouletteRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추첨
               </Button>
             </div>
@@ -223,7 +230,6 @@ export default function Home() {
         </div>
       </Card>
       
-      {/* 룰렛 팝업 Dialog */}
       <Dialog open={isRouletteOpen} onOpenChange={setIsRouletteOpen}>
         <DialogContent className="max-w-md p-6">
           <DialogHeader>
@@ -248,6 +254,8 @@ export default function Home() {
                         prizeItemHeight: 120,
                         prizesWithText: true,
                     }}
+                    type='horizontal' // 룰렛 타입을 지정할 수 있습니다.
+                    className='m-4'
                   />
                 </motion.div>
             )}
