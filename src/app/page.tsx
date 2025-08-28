@@ -66,7 +66,7 @@ export default function Home() {
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
   const [start, setStart] = useState(false);
-  const [prizeIndex, setPrizeIndex] = useState(0); // (수정!) winningPrize -> prizeIndex
+  const [prizeIndex, setPrizeIndex] = useState(0);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -195,7 +195,7 @@ export default function Home() {
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
 
-          <div className="w-full md:w-1-3 flex flex-col items-center md:justify-start space-y-4">
+          <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
               <Button onClick={handleSimpleRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
@@ -242,12 +242,9 @@ export default function Home() {
                   <RoulettePro
                     prizes={prizes}
                     start={start}
-                    // (수정!) winningPrize -> prizeIndex
-                    prizeIndex={prizeIndex} 
-                    onPrizeSelect={() => {
-                      // onPrizeSelect는 당첨 "후"에 호출되므로, 상태 업데이트는 onStopSpinning에서 처리
-                    }}
-                    onStopSpinning={() => {
+                    prizeIndex={prizeIndex}
+                    // (수정!) onPrizeSelect를 onStop으로 변경하고, 불필요한 인자 제거
+                    onStop={() => {
                       setStart(false);
                       setIsRouletteOpen(false);
                       updateMapAndCard(rouletteItems[prizeIndex]);
