@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { motion } from 'framer-motion';
 import dynamic from 'next/dynamic';
 
 const RoulettePro = dynamic(() => import('react-roulette-pro'), { ssr: false });
@@ -238,26 +237,18 @@ export default function Home() {
           </DialogHeader>
           <div className="flex flex-col justify-center items-center space-y-6">
             {prizes.length > 0 && (
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.5 }}>
                   <RoulettePro
                     prizes={prizes}
                     start={start}
                     prizeIndex={prizeIndex}
-                    // (수정!) onPrizeSelect를 onStop으로 변경하고, 불필요한 인자 제거
-                    onStop={() => {
+                    onPrizeDefined={() => {
                       setStart(false);
                       setIsRouletteOpen(false);
                       updateMapAndCard(rouletteItems[prizeIndex]);
                     }}
-                    designOptions={{
-                        prizeItemWidth: 120,
-                        prizeItemHeight: 120,
-                        prizesWithText: true,
-                    }}
+                    // (수정!) designOptions, className, motion 등 불필요한 속성 제거
                     type='horizontal'
-                    className='m-4'
                   />
-                </motion.div>
             )}
             <Button onClick={handleSpinClick} disabled={start} className="w-full max-w-[150px]">
               돌리기
