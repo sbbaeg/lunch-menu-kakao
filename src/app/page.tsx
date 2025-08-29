@@ -1,3 +1,5 @@
+// 로드뷰 any type 수정 ver
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
