@@ -19,14 +19,31 @@ import dynamic from 'next/dynamic';
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
 // (타입 정의는 이전과 동일)
-type KakaoMap = any;
-type KakaoMarker = any;
-type KakaoPolyline = any;
-type KakaoLatLng = any;
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoPolyline = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {
+  getLat: () => number;
+  getLng: () => number;
+};
 
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+      };
+    };
   }
 }
 
@@ -47,7 +64,6 @@ interface RouletteOption {
   option: string;
 }
 
-// (수정!) 새로운 카테고리 목록으로 변경
 const CATEGORIES = [
   "한식", "중식", "일식", "양식", "아시아음식", "분식",
   "패스트푸드", "치킨", "피자", "뷔페", "카페", "술집"
@@ -62,7 +78,6 @@ export default function Home() {
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
 
-  // (추가!) 선택된 카테고리를 관리하는 상태
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
@@ -92,11 +107,9 @@ export default function Home() {
     };
   }, []);
 
-  // (수정!) 선택된 카테고리를 API에 전달
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
     
-    // 선택된 카테고리가 없으면 '음식점'을 기본값으로 사용
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}`);
     if (!response.ok) throw new Error('API call failed');
@@ -104,7 +117,6 @@ export default function Home() {
     return data.documents || [];
   };
   
-  // (카테고리 선택 로직)
   const handleCategoryChange = (category: string) => {
     setSelectedCategories(prev =>
       prev.includes(category)
@@ -113,17 +125,15 @@ export default function Home() {
     );
   };
   
-  // (모두 선택 로직)
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  // (수정!) onCheckedChange의 타입을 명확하게 지정합니다.
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    if (checked === true) {
       setSelectedCategories(CATEGORIES);
     } else {
       setSelectedCategories([]);
     }
   };
 
-  
-  // (이하 recommendProcess, handleSpinClick, updateMapAndCard, handleError 함수는 이전과 동일)
   const recommendProcess = async (isRoulette: boolean) => {
     setLoading(true);
     setRecommendation(null);
@@ -204,7 +214,6 @@ export default function Home() {
           </div>
 
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
-            {/* (수정!) 필터 버튼 추가 */}
             <div className="w-full max-w-sm flex gap-2">
               <Button onClick={() => recommendProcess(false)} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
@@ -232,13 +241,13 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 pt-4 border-t">
                     <Checkbox
                       id="select-all"
                       checked={selectedCategories.length === CATEGORIES.length}
                       onCheckedChange={handleSelectAll}
                     />
-                    <Label htmlFor="select-all">모두 선택</Label>
+                    <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
                   </div>
                   <DialogFooter>
                     <DialogClose asChild>
@@ -275,7 +284,6 @@ export default function Home() {
         </div>
       </Card>
       
-      {/* 룰렛 팝업 Dialog (이전과 동일) */}
       <Dialog open={isRouletteOpen} onOpenChange={setIsRouletteOpen}>
         <DialogContent className="max-w-md p-6">
           <DialogHeader>
