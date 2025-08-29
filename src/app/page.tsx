@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+// (수정!) any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -84,10 +84,34 @@ const DISTANCES = [
   { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
 ];
 
+// (추가!) 로드뷰를 위한 별도의 컴포넌트 생성
+const Roadview = ({ position }: { position: KakaoLatLng | null }) => {
+  const roadviewContainer = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (position && roadviewContainer.current) {
+      const roadviewClient = new window.kakao.maps.RoadviewClient();
+      roadviewContainer.current.innerHTML = ''; // 이전 로드뷰 초기화
+
+      roadviewClient.getNearestPanoId(position, 50, (panoId: number | null) => {
+        if (panoId && roadviewContainer.current) {
+          const roadview = new window.kakao.maps.Roadview(roadviewContainer.current);
+          roadview.setPanoId(panoId, position);
+        } else if (roadviewContainer.current) {
+          roadviewContainer.current.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">로드뷰 정보가 없습니다.</div>';
+        }
+      });
+    }
+  }, [position]);
+
+  return <div ref={roadviewContainer} className="w-full h-80 border rounded-md bg-gray-100"></div>;
+};
+
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false); // 상세 팝업 상태
   
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
@@ -97,7 +121,6 @@ export default function Home() {
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
-  const roadviewContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
@@ -107,16 +130,11 @@ export default function Home() {
 
   useEffect(() => {
     const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY;
-    if (!KAKAO_JS_KEY) {
-      console.error("Kakao Maps JavaScript key is missing.");
-      return;
-    }
+    if (!KAKAO_JS_KEY) return;
     
     const scriptId = 'kakao-maps-script';
     if (document.getElementById(scriptId)) {
-        if (window.kakao && window.kakao.maps) {
-            setIsMapReady(true);
-        }
+        if (window.kakao && window.kakao.maps) setIsMapReady(true);
         return;
     }
 
@@ -142,29 +160,6 @@ export default function Home() {
       mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
     }
   }, [isMapReady]);
-
-
-  useEffect(() => {
-    if (recommendation && roadviewContainer.current && window.kakao) {
-      const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
-      const roadviewClient = new window.kakao.maps.RoadviewClient();
-      
-      roadviewContainer.current.innerHTML = '';
-
-      roadviewClient.getNearestPanoId(placePosition, 50, (panoId) => {
-        if (panoId && roadviewContainer.current) {
-          roadviewContainer.current.style.display = 'block';
-          new window.kakao.maps.Roadview(roadviewContainer.current).setPanoId(panoId, placePosition);
-        } else if(roadviewContainer.current) {
-          roadviewContainer.current.style.display = 'flex';
-          roadviewContainer.current.style.alignItems = 'center';
-          roadviewContainer.current.style.justifyContent = 'center';
-          roadviewContainer.current.innerHTML = '<p class="text-gray-500">로드뷰 정보가 없습니다.</p>';
-        }
-      });
-    }
-  }, [recommendation]);
-
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -289,43 +284,27 @@ export default function Home() {
                   <DialogHeader>
                     <DialogTitle>검색 필터 설정</DialogTitle>
                   </DialogHeader>
-                  
                   <div className="py-4 space-y-4">
                     <div>
                       <Label className="text-lg font-semibold">음식 종류</Label>
                       <div className="grid grid-cols-2 gap-4 pt-2">
                         {CATEGORIES.map(category => (
                           <div key={category} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={category}
-                              checked={selectedCategories.includes(category)}
-                              onCheckedChange={() => handleCategoryChange(category)}
-                            />
+                            <Checkbox id={category} checked={selectedCategories.includes(category)} onCheckedChange={() => handleCategoryChange(category)} />
                             <Label htmlFor={category}>{category}</Label>
                           </div>
                         ))}
                       </div>
                       <div className="flex items-center space-x-2 mt-4 pt-4 border-t">
-                        <Checkbox
-                          id="select-all"
-                          checked={selectedCategories.length === CATEGORIES.length}
-                          onCheckedChange={(checked) => handleSelectAll(checked)}
-                        />
+                        <Checkbox id="select-all" checked={selectedCategories.length === CATEGORIES.length} onCheckedChange={(checked) => handleSelectAll(checked)} />
                         <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
                       </div>
                     </div>
-
                     <div className="border-t border-gray-200"></div>
-
                     <div>
                       <Label className="text-lg font-semibold">검색 반경</Label>
                       <p className="text-sm text-gray-500">(선택하지 않으면 800m(도보 10분)으로 검색됩니다.)</p>
-                      <RadioGroup
-                        defaultValue="800"
-                        value={selectedDistance}
-                        onValueChange={setSelectedDistance}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2"
-                      >
+                      <RadioGroup defaultValue="800" value={selectedDistance} onValueChange={setSelectedDistance} className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
                         {DISTANCES.map(dist => (
                           <div key={dist.value} className="flex items-center space-x-2">
                             <RadioGroupItem value={dist.value} id={dist.value} />
@@ -340,7 +319,6 @@ export default function Home() {
                       </RadioGroup>
                     </div>
                   </div>
-
                   <DialogFooter>
                     <DialogClose asChild>
                       <Button>완료</Button>
@@ -350,17 +328,29 @@ export default function Home() {
               </Dialog>
             </div>
             
-            {recommendation ? (
+            {recommendation && (
               <Card className="w-full max-w-sm border shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-2">
-                  <div ref={roadviewContainer} className="w-full h-40 border rounded-md bg-gray-100 mb-2"></div>
+                <CardContent className="text-sm text-gray-700 space-y-1">
                   <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                   <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                 </CardContent>
-                <CardFooter className="pt-3">
+                <CardFooter className="pt-3 flex flex-col gap-2">
+                  <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="w-full" variant="outline">
+                        가게 모습 미리보기
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="w-[90vw] h-auto max-w-2xl flex flex-col">
+                      <DialogHeader>
+                        <DialogTitle>{recommendation.place_name}</DialogTitle>
+                      </DialogHeader>
+                      <Roadview position={new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x))} />
+                    </DialogContent>
+                  </Dialog>
                   <Button asChild className="w-full" variant="secondary">
                     <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
                       카카오맵에서 상세보기
@@ -368,10 +358,6 @@ export default function Home() {
                   </Button>
                 </CardFooter>
               </Card>
-            ) : (
-                <Card className="w-full max-w-sm flex items-center justify-center h-40 text-gray-500 border shadow-sm">
-                    <p>음식점을 추천받아보세요!</p>
-                </Card>
             )}
           </div>
         </div>
