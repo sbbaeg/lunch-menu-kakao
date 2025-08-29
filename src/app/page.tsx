@@ -11,8 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import dynamic from 'next/dynamic';
 
-const RoulettePro = dynamic(() => import('react-roulette-pro'), { ssr: false });
-import 'react-roulette-pro/dist/index.css';
+// (중요!) react-custom-roulette 라이브러리 import
+const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
 // 카카오맵 관련 타입을 명확하게 정의합니다.
 type KakaoMap = {
@@ -52,11 +52,9 @@ interface KakaoSearchResponse {
   documents: KakaoPlaceItem[];
 }
 
-// 룰렛 아이템 타입 정의
-interface Prize {
-  id: string;
-  image: string;
-  text: string;
+// 룰렛 아이템 타입을 텍스트만 받도록 단순화
+interface RouletteOption {
+  option: string;
 }
 
 export default function Home() {
@@ -64,8 +62,8 @@ export default function Home() {
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
-  const [start, setStart] = useState(false);
-  const [prizeIndex, setPrizeIndex] = useState(0);
+  const [mustSpin, setMustSpin] = useState(false);
+  const [prizeNumber, setPrizeNumber] = useState(0);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -140,7 +138,7 @@ export default function Home() {
         if (restaurants.length >= 5) {
           setRouletteItems(restaurants.slice(0, 5));
           setIsRouletteOpen(true);
-          setStart(false);
+          setMustSpin(false);
         } else {
             alert('주변에 추첨할 음식점이 5개 미만입니다.');
         }
@@ -154,10 +152,10 @@ export default function Home() {
   };
   
   const handleSpinClick = () => {
-    if (start) return;
-    const newPrizeIndex = Math.floor(Math.random() * rouletteItems.length);
-    setPrizeIndex(newPrizeIndex);
-    setStart(true);
+    if (mustSpin) return;
+    const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
+    setPrizeNumber(newPrizeNumber);
+    setMustSpin(true);
   };
 
   const updateMapAndCard = (place: KakaoPlaceItem) => {
@@ -178,11 +176,8 @@ export default function Home() {
     setLoading(false);
   };
 
-  const prizes: Prize[] = rouletteItems.map(item => ({
-    id: item.place_url,
-    text: item.place_name,
-    image: 'DEFAULT_IMAGE'
-  }));
+  // 새로운 룰렛 라이브러리의 데이터 형식에 맞게 변환
+  const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -236,20 +231,20 @@ export default function Home() {
             <DialogTitle className="text-center text-2xl mb-4">룰렛을 돌려 오늘 점심을 선택하세요!</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col justify-center items-center space-y-6">
-            {prizes.length > 0 && (
-                  <RoulettePro
-                    prizes={prizes}
-                    start={start}
-                    prizeIndex={prizeIndex}
-                    onPrizeDefined={() => {
-                      setStart(false);
-                      setIsRouletteOpen(false);
-                      updateMapAndCard(rouletteItems[prizeIndex]);
-                    }}
-                    // (수정!) designOptions 속성을 제거합니다.
-                  />
+            {rouletteData.length > 0 && (
+              // 새로운 Wheel 컴포넌트 사용
+              <Wheel
+                mustStartSpinning={mustSpin}
+                prizeNumber={prizeNumber}
+                data={rouletteData}
+                onStopSpinning={() => {
+                  setMustSpin(false);
+                  setIsRouletteOpen(false);
+                  updateMapAndCard(rouletteItems[prizeNumber]);
+                }}
+              />
             )}
-            <Button onClick={handleSpinClick} disabled={start} className="w-full max-w-[150px]">
+            <Button onClick={handleSpinClick} disabled={mustSpin} className="w-full max-w-[150px]">
               돌리기
             </Button>
           </div>
