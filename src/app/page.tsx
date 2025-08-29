@@ -1,5 +1,3 @@
-// 로드뷰 any type 수정 ver
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -15,15 +13,32 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (타입 정의는 이전과 동일)
-type KakaoMap = any;
-type KakaoMarker = any;
-type KakaoPolyline = any;
-type KakaoLatLng = any;
+// 카카오맵 관련 타입을 명확하게 정의합니다.
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoPolyline = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {
+  getLat: () => number;
+  getLng: () => number;
+};
 
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+      };
+    };
   }
 }
 
@@ -49,12 +64,12 @@ export default function Home() {
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
+  // (수정!) 룰렛 상태 변수 이름을 mustSpin으로 통일합니다.
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
-  const roadviewContainer = useRef<HTMLDivElement | null>(null); // 로드뷰를 위한 ref
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
@@ -63,9 +78,8 @@ export default function Home() {
   const [isMapReady, setIsMapReady] = useState(false);
 
   useEffect(() => {
-    // (수정!) 로드뷰 라이브러리를 함께 불러옵니다.
     const script = document.createElement('script');
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY}&autoload=false&libraries=services,clusterer,drawing,roadview`;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY}&autoload=false`;
     script.async = true;
     document.head.appendChild(script);
     script.onload = () => {
@@ -82,35 +96,11 @@ export default function Home() {
     };
   }, []);
 
-  // (수정!) 추천 가게가 바뀔 때마다 로드뷰를 그리도록 수정
-  useEffect(() => {
-    if (recommendation && roadviewContainer.current) {
-      const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
-      const roadviewClient = new window.kakao.maps.RoadviewClient();
-
-      // 로드뷰 컨테이너를 먼저 비워줍니다.
-      roadviewContainer.current.innerHTML = '';
-
-      roadviewClient.getNearestPanoId(placePosition, 50, (panoId: number) => {
-        if (panoId && roadviewContainer.current) {
-          roadviewContainer.current.style.display = 'block';
-          new window.kakao.maps.Roadview(roadviewContainer.current).setPanoId(panoId, placePosition);
-        } else if (roadviewContainer.current) {
-          // 로드뷰가 없는 경우 메시지 표시
-          roadviewContainer.current.style.display = 'flex';
-          roadviewContainer.current.style.alignItems = 'center';
-          roadviewContainer.current.style.justifyContent = 'center';
-          roadviewContainer.current.innerHTML = '<p class="text-gray-500">로드뷰 정보가 없습니다.</p>';
-        }
-      });
-    }
-  }, [recommendation]); // recommendation이 변경될 때마다 실행
-
-
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
-    setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
-    if (!response.ok) throw new Error('API call failed');
+    if (!response.ok) {
+      throw new Error('API call failed');
+    }
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
   };
@@ -122,8 +112,15 @@ export default function Home() {
     if (polylineInstance.current) polylineInstance.current.setMap(null);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
+      setUserLocation(currentLocation);
+      if (mapInstance.current) {
+        mapInstance.current.setCenter(currentLocation);
+      }
+
       try {
-        const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
+        const restaurants = await getNearbyRestaurants(latitude, longitude);
         if (isRoulette) {
           if (restaurants.length >= 5) {
             setRouletteItems(restaurants.slice(0, 5));
@@ -135,7 +132,7 @@ export default function Home() {
         } else {
           if (restaurants.length > 0) {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
-            updateMapAndCard(restaurants[randomIndex]);
+            updateMapAndCard(restaurants[randomIndex], currentLocation);
           } else {
             alert('주변에 추천할 음식점을 찾지 못했어요!');
           }
@@ -146,31 +143,27 @@ export default function Home() {
       } finally {
         setLoading(false);
       }
-    }, (error) => {
-        console.error("Geolocation error:", error);
-        alert("위치 정보를 가져오는 데 실패했습니다.");
-        setLoading(false);
-    });
+    }, handleError);
   };
-
+  
   const handleSpinClick = () => {
     if (mustSpin) return;
     const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
     setPrizeNumber(newPrizeNumber);
+    // (수정!) setStart 대신 setMustSpin을 사용합니다.
     setMustSpin(true);
   };
 
-  const updateMapAndCard = (place: KakaoPlaceItem) => {
+  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
-    if (mapInstance.current && userLocation) {
+    if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      mapInstance.current.setCenter(placePosition);
       
       markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
 
       polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [userLocation, placePosition],
+        path: [currentLoc, placePosition],
         strokeWeight: 5,
         strokeColor: '#007BFF',
         strokeOpacity: 0.8,
@@ -181,7 +174,7 @@ export default function Home() {
 
   const handleError = (error: GeolocationPositionError) => {
     console.error("Geolocation error:", error);
-    alert("위치 정보를 가져오는 데 실패했습니다.");
+    alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
     setLoading(false);
   };
 
@@ -212,14 +205,11 @@ export default function Home() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-2">
-                  {/* (수정!) 로드뷰를 표시할 div 추가 */}
-                  <div ref={roadviewContainer} className="w-full h-40 border rounded-md bg-gray-100"></div>
+                <CardContent className="text-sm text-gray-700 space-y-1">
                   <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                   <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                 </CardContent>
                 <CardFooter className="pt-3">
-                  {/* (수정!) 버튼을 일반 링크로 변경 */}
                   <Button asChild className="w-full" variant="secondary">
                     <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
                       카카오맵에서 상세보기
@@ -244,13 +234,14 @@ export default function Home() {
           <div className="flex flex-col justify-center items-center space-y-6">
             {rouletteData.length > 0 && (
               <Wheel
+                // (수정!) start 대신 mustStartSpinning을 사용합니다.
                 mustStartSpinning={mustSpin}
                 prizeNumber={prizeNumber}
                 data={rouletteData}
                 onStopSpinning={() => {
                   setMustSpin(false);
                   setIsRouletteOpen(false);
-                  updateMapAndCard(rouletteItems[prizeNumber]);
+                  updateMapAndCard(rouletteItems[prizeNumber], userLocation!);
                 }}
               />
             )}
