@@ -19,14 +19,32 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-type KakaoMap = any;
-type KakaoMarker = any;
-type KakaoPolyline = any;
-type KakaoLatLng = any;
+// (수정!) any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoPolyline = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {
+  getLat: () => number;
+  getLng: () => number;
+};
 
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+      };
+    };
   }
 }
 
@@ -192,6 +210,7 @@ export default function Home() {
 
   const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
 
+
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <Card className="w-full max-w-6xl p-6 md:p-8 space-y-6">
@@ -244,12 +263,10 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* (수정!) 구분선 추가 */}
                     <div className="border-t border-gray-200"></div>
 
                     <div>
                       <Label className="text-lg font-semibold">검색 반경</Label>
-                      {/* (추가!) 안내 문구 */}
                       <p className="text-sm text-gray-500">(선택하지 않으면 800m(도보 10분)으로 검색됩니다.)</p>
                       <RadioGroup
                         defaultValue="800"
