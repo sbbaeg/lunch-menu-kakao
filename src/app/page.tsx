@@ -66,12 +66,12 @@ export default function Home() {
   
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
-  const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null); // 사용자 위치 저장
+  const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
-  const polylineInstance = useRef<KakaoPolyline | null>(null); // 경로 선 저장
+  const polylineInstance = useRef<KakaoPolyline | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
@@ -95,40 +95,56 @@ export default function Home() {
     };
   }, []);
 
+  // (수정!) API 호출 로직을 분리합니다.
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
-    // 사용자 위치 저장
-    setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
-    
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
     if (!response.ok) throw new Error('API call failed');
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
   };
 
-  const recommendProcess = async (isRoulette: boolean) => {
+  // (수정!) recommendProcess 함수를 제거하고, 각 버튼 핸들러를 분리합니다.
+  const handleSimpleRecommend = () => {
     setLoading(true);
-    setRecommendation(null);
-    if (markerInstance.current) markerInstance.current.setMap(null);
-    if (polylineInstance.current) polylineInstance.current.setMap(null);
-
+    clearMap();
     navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
+      setUserLocation(currentLocation); // (핵심!) 위치 상태를 먼저 업데이트합니다.
+
       try {
-        const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
-        if (isRoulette) {
-          if (restaurants.length >= 5) {
-            setRouletteItems(restaurants.slice(0, 5));
-            setIsRouletteOpen(true);
-            setMustSpin(false);
-          } else {
-            alert('주변에 추첨할 음식점이 5개 미만입니다.');
-          }
+        const restaurants = await getNearbyRestaurants(latitude, longitude);
+        if (restaurants.length > 0) {
+          const randomIndex = Math.floor(Math.random() * restaurants.length);
+          updateMapAndCard(restaurants[randomIndex], currentLocation);
         } else {
-          if (restaurants.length > 0) {
-            const randomIndex = Math.floor(Math.random() * restaurants.length);
-            updateMapAndCard(restaurants[randomIndex]);
-          } else {
-            alert('주변에 추천할 음식점을 찾지 못했어요!');
-          }
+          alert('주변에 추천할 음식점을 찾지 못했어요!');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('음식점을 불러오는 데 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    }, handleError);
+  };
+
+  const handleRouletteRecommend = () => {
+    setLoading(true);
+    clearMap();
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
+      setUserLocation(currentLocation); // (핵심!) 위치 상태를 먼저 업데이트합니다.
+
+      try {
+        const restaurants = await getNearbyRestaurants(latitude, longitude);
+        if (restaurants.length >= 5) {
+          setRouletteItems(restaurants.slice(0, 5));
+          setIsRouletteOpen(true);
+          setMustSpin(false);
+        } else {
+          alert('주변에 추첨할 음식점이 5개 미만입니다.');
         }
       } catch (error) {
         console.error('Error:', error);
@@ -145,19 +161,24 @@ export default function Home() {
     setPrizeNumber(newPrizeNumber);
     setMustSpin(true);
   };
+  
+  const clearMap = () => {
+    setRecommendation(null);
+    if (markerInstance.current) markerInstance.current.setMap(null);
+    if (polylineInstance.current) polylineInstance.current.setMap(null);
+  };
 
-  const updateMapAndCard = (place: KakaoPlaceItem) => {
+  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
-    if (mapInstance.current && userLocation) {
+    if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       mapInstance.current.setCenter(placePosition);
       
       markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
 
-      // (추가!) 경로 선 그리기
       polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [userLocation, placePosition], // 출발지(사용자 위치)와 도착지(가게 위치)
+        path: [currentLoc, placePosition],
         strokeWeight: 5,
         strokeColor: '#007BFF',
         strokeOpacity: 0.8,
@@ -186,11 +207,10 @@ export default function Home() {
 
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
-              <Button onClick={() => recommendProcess(false)} disabled={loading || !isMapReady} size="lg" className="flex-1">
+              <Button onClick={handleSimpleRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
               </Button>
-              {/* (수정!) 버튼 이름 변경 */}
-              <Button onClick={() => recommendProcess(true)} disabled={loading || !isMapReady} size="lg" className="flex-1">
+              <Button onClick={handleRouletteRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 룰렛
               </Button>
             </div>
@@ -235,7 +255,10 @@ export default function Home() {
                 onStopSpinning={() => {
                   setMustSpin(false);
                   setIsRouletteOpen(false);
-                  updateMapAndCard(rouletteItems[prizeNumber]);
+                  // (수정!) userLocation 상태를 사용합니다.
+                  if(userLocation) {
+                    updateMapAndCard(rouletteItems[prizeNumber], userLocation);
+                  }
                 }}
               />
             )}
