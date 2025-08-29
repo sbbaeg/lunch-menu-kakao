@@ -6,15 +6,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lat = searchParams.get('lat');
   const lng = searchParams.get('lng');
+  // (수정!) 프론트에서 보낸 query 파라미터를 받습니다.
+  const query = searchParams.get('query') || '음식점'; // 기본값은 '음식점'
 
   if (!lat || !lng) {
     return NextResponse.json({ error: 'Latitude and longitude are required' }, { status: 400 });
   }
 
   try {
-    // (수정!) 검색 반경(radius)을 800m (도보 10분 거리)로 확장합니다.
+    // (수정!) 고정된 '음식점' 대신 받은 query를 사용합니다.
     const response = await fetch(
-      `https://dapi.kakao.com/v2/local/search/keyword.json?query=음식점&y=${lat}&x=${lng}&radius=800`,
+      `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&y=${lat}&x=${lng}&radius=800`,
       {
         headers: {
           Authorization: `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,
