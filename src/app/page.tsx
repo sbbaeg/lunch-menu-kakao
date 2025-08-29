@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (수정!) any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+// any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -33,24 +33,16 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
-type KakaoRoadview = {
-  setPanoId: (panoId: number, position: KakaoLatLng) => void;
-};
-type KakaoRoadviewClient = {
-  getNearestPanoId: (position: KakaoLatLng, radius: number, callback: (panoId: number | null) => void) => void;
-};
 
 declare global {
   interface Window {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
-        Roadview: new (container: HTMLElement) => KakaoRoadview;
-        RoadviewClient: new () => KakaoRoadviewClient;
       };
     };
   }
@@ -84,34 +76,10 @@ const DISTANCES = [
   { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
 ];
 
-// (추가!) 로드뷰를 위한 별도의 컴포넌트 생성
-const Roadview = ({ position }: { position: KakaoLatLng | null }) => {
-  const roadviewContainer = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (position && roadviewContainer.current) {
-      const roadviewClient = new window.kakao.maps.RoadviewClient();
-      roadviewContainer.current.innerHTML = ''; // 이전 로드뷰 초기화
-
-      roadviewClient.getNearestPanoId(position, 50, (panoId: number | null) => {
-        if (panoId && roadviewContainer.current) {
-          const roadview = new window.kakao.maps.Roadview(roadviewContainer.current);
-          roadview.setPanoId(panoId, position);
-        } else if (roadviewContainer.current) {
-          roadviewContainer.current.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">로드뷰 정보가 없습니다.</div>';
-        }
-      });
-    }
-  }, [position]);
-
-  return <div ref={roadviewContainer} className="w-full h-80 border rounded-md bg-gray-100"></div>;
-};
-
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
-  const [isDetailOpen, setIsDetailOpen] = useState(false); // 상세 팝업 상태
   
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
@@ -140,7 +108,8 @@ export default function Home() {
 
     const script = document.createElement('script');
     script.id = scriptId;
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false&libraries=services,clusterer,drawing,roadview`;
+    // (수정!) 로드뷰 라이브러리 제거
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
     script.async = true;
     document.head.appendChild(script);
 
@@ -328,7 +297,7 @@ export default function Home() {
               </Dialog>
             </div>
             
-            {recommendation && (
+            {recommendation ? (
               <Card className="w-full max-w-sm border shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
@@ -337,20 +306,7 @@ export default function Home() {
                   <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                   <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                 </CardContent>
-                <CardFooter className="pt-3 flex flex-col gap-2">
-                  <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-                    <DialogTrigger asChild>
-                      <Button className="w-full" variant="outline">
-                        가게 모습 미리보기
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="w-[90vw] h-auto max-w-2xl flex flex-col">
-                      <DialogHeader>
-                        <DialogTitle>{recommendation.place_name}</DialogTitle>
-                      </DialogHeader>
-                      <Roadview position={new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x))} />
-                    </DialogContent>
-                  </Dialog>
+                <CardFooter className="pt-3">
                   <Button asChild className="w-full" variant="secondary">
                     <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
                       카카오맵에서 상세보기
@@ -358,6 +314,10 @@ export default function Home() {
                   </Button>
                 </CardFooter>
               </Card>
+            ) : (
+                <Card className="w-full max-w-sm flex items-center justify-center h-40 text-gray-500 border shadow-sm">
+                    <p>음식점을 추천받아보세요!</p>
+                </Card>
             )}
           </div>
         </div>
