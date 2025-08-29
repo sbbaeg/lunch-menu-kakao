@@ -2,10 +2,15 @@
 
 import { NextResponse } from 'next/server';
 
-// (추가!) 카카오 API 응답 타입을 명확하게 정의합니다.
+// (수정!) any 대신 실제 데이터 타입을 명확하게 정의합니다.
 interface KakaoPlace {
-  // 필요한 모든 필드를 여기에 정의할 수 있습니다.
-  [key: string]: any; 
+  id: string;
+  place_name: string;
+  category_name: string;
+  road_address_name: string;
+  x: string;
+  y: string;
+  place_url: string;
 }
 
 interface KakaoSearchResponse {
@@ -23,11 +28,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    // (수정!) 쉼표로 구분된 쿼리를 배열로 분리
     const categories = query.split(',');
     let allResults: KakaoPlace[] = [];
 
-    // (수정!) 각 카테고리별로 API를 호출
     for (const category of categories) {
       const response = await fetch(
         `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(category.trim())}&y=${lat}&x=${lng}&radius=800`,
@@ -43,7 +46,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // (수정!) 중복된 결과를 제거 (같은 가게가 여러 카테고리에 나올 수 있음)
     const uniqueResults = allResults.filter(
       (place, index, self) => index === self.findIndex((p) => p.id === place.id)
     );
