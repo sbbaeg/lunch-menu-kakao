@@ -19,17 +19,40 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (타입 정의는 이전과 동일)
-type KakaoMap = any;
-type KakaoMarker = any;
-type KakaoPolyline = any;
-type KakaoLatLng = any;
-type KakaoRoadview = any;
-type KakaoRoadviewClient = any;
+// any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+type KakaoMap = {
+  setCenter: (latlng: KakaoLatLng) => void;
+};
+type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoPolyline = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoLatLng = {
+  getLat: () => number;
+  getLng: () => number;
+};
+type KakaoRoadview = {
+  setPanoId: (panoId: number, position: KakaoLatLng) => void;
+};
+type KakaoRoadviewClient = {
+  getNearestPanoId: (position: KakaoLatLng, radius: number, callback: (panoId: number | null) => void) => void;
+};
 
 declare global {
   interface Window {
-    kakao: any;
+    kakao: {
+      maps: {
+        load: (callback: () => void) => void;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        LatLng: new (lat: number, lng: number) => KakaoLatLng;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+        Roadview: new (container: HTMLElement) => KakaoRoadview;
+        RoadviewClient: new () => KakaoRoadviewClient;
+      };
+    };
   }
 }
 
@@ -83,20 +106,10 @@ export default function Home() {
   const [isMapReady, setIsMapReady] = useState(false);
 
   useEffect(() => {
-    // (수정!) API 키를 직접 변수로 가져옵니다.
-    const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY;
-
-    // 키가 없으면 함수를 중단합니다.
-    if (!KAKAO_JS_KEY) {
-      console.error("Kakao Maps JavaScript key is missing.");
-      return;
-    }
-
     const script = document.createElement('script');
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false&libraries=services,clusterer,drawing,roadview`;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY}&autoload=false&libraries=services,clusterer,drawing,roadview`;
     script.async = true;
     document.head.appendChild(script);
-
     script.onload = () => {
       window.kakao.maps.load(() => {
         if (mapContainer.current) {
@@ -115,14 +128,14 @@ export default function Home() {
     if (recommendation && roadviewContainer.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
       const roadviewClient = new window.kakao.maps.RoadviewClient();
-
+      
       roadviewContainer.current.innerHTML = '';
 
-      roadviewClient.getNearestPanoId(placePosition, 50, (panoId: number) => {
+      roadviewClient.getNearestPanoId(placePosition, 50, (panoId) => {
         if (panoId && roadviewContainer.current) {
           roadviewContainer.current.style.display = 'block';
           new window.kakao.maps.Roadview(roadviewContainer.current).setPanoId(panoId, placePosition);
-        } else if (roadviewContainer.current) {
+        } else if(roadviewContainer.current) {
           roadviewContainer.current.style.display = 'flex';
           roadviewContainer.current.style.alignItems = 'center';
           roadviewContainer.current.style.justifyContent = 'center';
@@ -134,8 +147,6 @@ export default function Home() {
 
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
-    setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
-    
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}`);
@@ -167,8 +178,15 @@ export default function Home() {
     if (polylineInstance.current) polylineInstance.current.setMap(null);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
+      setUserLocation(currentLocation);
+      if (mapInstance.current) {
+        mapInstance.current.setCenter(currentLocation);
+      }
+
       try {
-        const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
+        const restaurants = await getNearbyRestaurants(latitude, longitude);
         if (isRoulette) {
           if (restaurants.length >= 5) {
             setRouletteItems(restaurants.slice(0, 5));
@@ -180,7 +198,7 @@ export default function Home() {
         } else {
           if (restaurants.length > 0) {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
-            updateMapAndCard(restaurants[randomIndex]);
+            updateMapAndCard(restaurants[randomIndex], currentLocation);
           } else {
             alert('주변에 추천할 음식점을 찾지 못했어요!');
           }
@@ -193,7 +211,7 @@ export default function Home() {
       }
     }, (error) => {
         console.error("Geolocation error:", error);
-        alert("위치 정보를 가져오는 데 실패했습니다.");
+        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
         setLoading(false);
     });
   };
@@ -202,20 +220,19 @@ export default function Home() {
     if (mustSpin) return;
     const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
     setPrizeNumber(newPrizeNumber);
-    setMustSpin(true);
+    setMustSpin(true); // (수정!) start 대신 mustSpin을 사용합니다.
   };
 
-  const updateMapAndCard = (place: KakaoPlaceItem) => {
+  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
-    if (mapInstance.current && userLocation) {
+    if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      mapInstance.current.setCenter(placePosition);
       
       markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
 
       polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [userLocation, placePosition],
+        path: [currentLoc, placePosition],
         strokeWeight: 5,
         strokeColor: '#007BFF',
         strokeOpacity: 0.8,
@@ -272,7 +289,7 @@ export default function Home() {
                         <Checkbox
                           id="select-all"
                           checked={selectedCategories.length === CATEGORIES.length}
-                          onCheckedChange={handleSelectAll}
+                          onCheckedChange={(checked) => handleSelectAll(checked)}
                         />
                         <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
                       </div>
@@ -354,8 +371,8 @@ export default function Home() {
                 onStopSpinning={() => {
                   setMustSpin(false);
                   setIsRouletteOpen(false);
-                  if(userLocation) {
-                    updateMapAndCard(rouletteItems[prizeNumber]);
+                  if (userLocation) {
+                    updateMapAndCard(rouletteItems[prizeNumber], userLocation);
                   }
                 }}
               />
