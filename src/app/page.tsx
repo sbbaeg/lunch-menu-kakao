@@ -11,14 +11,16 @@ import {
 } from "@/components/ui/dialog";
 import dynamic from 'next/dynamic';
 
-// (중요!) react-custom-roulette 라이브러리 import
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// 카카오맵 관련 타입을 명확하게 정의합니다.
+// (수정!) 카카오맵 관련 타입을 명확하게 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
 type KakaoMarker = {
+  setMap: (map: KakaoMap | null) => void;
+};
+type KakaoPolyline = {
   setMap: (map: KakaoMap | null) => void;
 };
 type KakaoLatLng = {
@@ -34,6 +36,7 @@ declare global {
         Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
       };
     };
   }
@@ -52,7 +55,6 @@ interface KakaoSearchResponse {
   documents: KakaoPlaceItem[];
 }
 
-// 룰렛 아이템 타입을 텍스트만 받도록 단순화
 interface RouletteOption {
   option: string;
 }
@@ -64,10 +66,12 @@ export default function Home() {
   
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
+  const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null); // 사용자 위치 저장
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
+  const polylineInstance = useRef<KakaoPolyline | null>(null); // 경로 선 저장
   
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
@@ -92,55 +96,39 @@ export default function Home() {
   }, []);
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
+    // 사용자 위치 저장
+    setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
+    
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
-    if (!response.ok) {
-      throw new Error('API call failed');
-    }
+    if (!response.ok) throw new Error('API call failed');
     const data: KakaoSearchResponse = await response.json();
-    if (!data.documents || data.documents.length === 0) {
-      return [];
-    }
-    return data.documents;
+    return data.documents || [];
   };
 
-  const handleSimpleRecommend = async () => {
+  const recommendProcess = async (isRoulette: boolean) => {
     setLoading(true);
     setRecommendation(null);
     if (markerInstance.current) markerInstance.current.setMap(null);
+    if (polylineInstance.current) polylineInstance.current.setMap(null);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
       try {
         const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
-        if (restaurants.length > 0) {
-          const randomIndex = Math.floor(Math.random() * restaurants.length);
-          const randomPlace = restaurants[randomIndex];
-          updateMapAndCard(randomPlace);
-        } else {
-            alert('주변에 추천할 음식점을 찾지 못했어요!');
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        alert('음식점을 불러오는 데 실패했습니다.');
-      } finally {
-        setLoading(false);
-      }
-    }, handleError);
-  };
-  
-  const handleRouletteRecommend = async () => {
-    setLoading(true);
-    setRecommendation(null);
-    if (markerInstance.current) markerInstance.current.setMap(null);
-  
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      try {
-        const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
-        if (restaurants.length >= 5) {
-          setRouletteItems(restaurants.slice(0, 5));
-          setIsRouletteOpen(true);
-          setMustSpin(false);
-        } else {
+        if (isRoulette) {
+          if (restaurants.length >= 5) {
+            setRouletteItems(restaurants.slice(0, 5));
+            setIsRouletteOpen(true);
+            setMustSpin(false);
+          } else {
             alert('주변에 추첨할 음식점이 5개 미만입니다.');
+          }
+        } else {
+          if (restaurants.length > 0) {
+            const randomIndex = Math.floor(Math.random() * restaurants.length);
+            updateMapAndCard(restaurants[randomIndex]);
+          } else {
+            alert('주변에 추천할 음식점을 찾지 못했어요!');
+          }
         }
       } catch (error) {
         console.error('Error:', error);
@@ -150,7 +138,7 @@ export default function Home() {
       }
     }, handleError);
   };
-  
+
   const handleSpinClick = () => {
     if (mustSpin) return;
     const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
@@ -160,13 +148,21 @@ export default function Home() {
 
   const updateMapAndCard = (place: KakaoPlaceItem) => {
     setRecommendation(place);
-    if (mapInstance.current) {
+    if (mapInstance.current && userLocation) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       mapInstance.current.setCenter(placePosition);
-      markerInstance.current = new window.kakao.maps.Marker({
-        position: placePosition,
-      });
+      
+      markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
+
+      // (추가!) 경로 선 그리기
+      polylineInstance.current = new window.kakao.maps.Polyline({
+        path: [userLocation, placePosition], // 출발지(사용자 위치)와 도착지(가게 위치)
+        strokeWeight: 5,
+        strokeColor: '#007BFF',
+        strokeOpacity: 0.8,
+      });
+      polylineInstance.current.setMap(mapInstance.current);
     }
   };
 
@@ -176,7 +172,6 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 새로운 룰렛 라이브러리의 데이터 형식에 맞게 변환
   const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
 
   return (
@@ -191,11 +186,12 @@ export default function Home() {
 
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
-              <Button onClick={handleSimpleRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
+              <Button onClick={() => recommendProcess(false)} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 추천
               </Button>
-              <Button onClick={handleRouletteRecommend} disabled={loading || !isMapReady} size="lg" className="flex-1">
-                음식점 추첨
+              {/* (수정!) 버튼 이름 변경 */}
+              <Button onClick={() => recommendProcess(true)} disabled={loading || !isMapReady} size="lg" className="flex-1">
+                음식점 룰렛
               </Button>
             </div>
             
@@ -232,7 +228,6 @@ export default function Home() {
           </DialogHeader>
           <div className="flex flex-col justify-center items-center space-y-6">
             {rouletteData.length > 0 && (
-              // 새로운 Wheel 컴포넌트 사용
               <Wheel
                 mustStartSpinning={mustSpin}
                 prizeNumber={prizeNumber}
