@@ -2,15 +2,9 @@
 
 import { NextResponse } from 'next/server';
 
-// (수정!) any 대신 실제 데이터 타입을 명확하게 정의합니다.
 interface KakaoPlace {
   id: string;
-  place_name: string;
-  category_name: string;
-  road_address_name: string;
-  x: string;
-  y: string;
-  place_url: string;
+  [key: string]: any;
 }
 
 interface KakaoSearchResponse {
@@ -22,6 +16,8 @@ export async function GET(request: Request) {
   const lat = searchParams.get('lat');
   const lng = searchParams.get('lng');
   const query = searchParams.get('query') || '음식점';
+  // (수정!) 프론트에서 보낸 radius 파라미터를 받습니다. (기본값 800m)
+  const radius = searchParams.get('radius') || '800';
 
   if (!lat || !lng) {
     return NextResponse.json({ error: 'Latitude and longitude are required' }, { status: 400 });
@@ -32,8 +28,9 @@ export async function GET(request: Request) {
     let allResults: KakaoPlace[] = [];
 
     for (const category of categories) {
+      // (수정!) 고정된 '800' 대신 받은 radius를 사용합니다.
       const response = await fetch(
-        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(category.trim())}&y=${lat}&x=${lng}&radius=800`,
+        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(category.trim())}&y=${lat}&x=${lng}&radius=${radius}`,
         {
           headers: {
             Authorization: `KakaoAK ${process.env.KAKAO_REST_API_KEY}`,

@@ -14,36 +14,19 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (타입 정의는 이전과 동일)
-type KakaoMap = {
-  setCenter: (latlng: KakaoLatLng) => void;
-};
-type KakaoMarker = {
-  setMap: (map: KakaoMap | null) => void;
-};
-type KakaoPolyline = {
-  setMap: (map: KakaoMap | null) => void;
-};
-type KakaoLatLng = {
-  getLat: () => number;
-  getLng: () => number;
-};
+type KakaoMap = any;
+type KakaoMarker = any;
+type KakaoPolyline = any;
+type KakaoLatLng = any;
 
 declare global {
   interface Window {
-    kakao: {
-      maps: {
-        load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
-        LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
-        Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
-      };
-    };
+    kakao: any;
   }
 }
 
@@ -69,6 +52,12 @@ const CATEGORIES = [
   "패스트푸드", "치킨", "피자", "뷔페", "카페", "술집"
 ];
 
+const DISTANCES = [
+  { value: '500', label: '가까워요 (도보 5분)' },
+  { value: '800', label: '적당해요 (도보 10분)' },
+  { value: '2000', label: '조금 멀어요 (2km)' },
+];
+
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
@@ -79,6 +68,7 @@ export default function Home() {
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedDistance, setSelectedDistance] = useState<string>('800');
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -111,7 +101,8 @@ export default function Home() {
     setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
     
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
-    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}`);
+    const radius = selectedDistance;
+    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}`);
     if (!response.ok) throw new Error('API call failed');
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
@@ -125,7 +116,6 @@ export default function Home() {
     );
   };
   
-  // (수정!) onCheckedChange의 타입을 명확하게 지정합니다.
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
     if (checked === true) {
       setSelectedCategories(CATEGORIES);
@@ -202,7 +192,6 @@ export default function Home() {
 
   const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
 
-
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <Card className="w-full max-w-6xl p-6 md:p-8 space-y-6">
@@ -227,28 +216,57 @@ export default function Home() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>검색할 음식 카테고리를 선택하세요</DialogTitle>
+                    <DialogTitle>검색 필터 설정</DialogTitle>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4 py-4">
-                    {CATEGORIES.map(category => (
-                      <div key={category} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={category}
-                          checked={selectedCategories.includes(category)}
-                          onCheckedChange={() => handleCategoryChange(category)}
-                        />
-                        <Label htmlFor={category}>{category}</Label>
+                  
+                  <div className="py-4 space-y-4">
+                    <div>
+                      <Label className="text-lg font-semibold">음식 종류</Label>
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        {CATEGORIES.map(category => (
+                          <div key={category} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={category}
+                              checked={selectedCategories.includes(category)}
+                              onCheckedChange={() => handleCategoryChange(category)}
+                            />
+                            <Label htmlFor={category}>{category}</Label>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                      <div className="flex items-center space-x-2 mt-4 pt-4 border-t">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectedCategories.length === CATEGORIES.length}
+                          onCheckedChange={handleSelectAll}
+                        />
+                        <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
+                      </div>
+                    </div>
+
+                    {/* (수정!) 구분선 추가 */}
+                    <div className="border-t border-gray-200"></div>
+
+                    <div>
+                      <Label className="text-lg font-semibold">검색 반경</Label>
+                      {/* (추가!) 안내 문구 */}
+                      <p className="text-sm text-gray-500">(선택하지 않으면 800m(도보 10분)으로 검색됩니다.)</p>
+                      <RadioGroup
+                        defaultValue="800"
+                        value={selectedDistance}
+                        onValueChange={setSelectedDistance}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2"
+                      >
+                        {DISTANCES.map(dist => (
+                          <div key={dist.value} className="flex items-center space-x-2">
+                            <RadioGroupItem value={dist.value} id={dist.value} />
+                            <Label htmlFor={dist.value}>{dist.label}</Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2 pt-4 border-t">
-                    <Checkbox
-                      id="select-all"
-                      checked={selectedCategories.length === CATEGORIES.length}
-                      onCheckedChange={handleSelectAll}
-                    />
-                    <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
-                  </div>
+
                   <DialogFooter>
                     <DialogClose asChild>
                       <Button>완료</Button>
