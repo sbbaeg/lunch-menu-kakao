@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (수정!) any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+// 카카오맵 관련 타입을 명확하게 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -71,9 +71,9 @@ const CATEGORIES = [
 ];
 
 const DISTANCES = [
-  { value: '500', label: '가까워요 (도보 5분)' },
-  { value: '800', label: '적당해요 (도보 10분)' },
-  { value: '2000', label: '조금 멀어요 (2km)' },
+  { value: '500', label: '가까워요', walkTime: '약 5분' },
+  { value: '800', label: '적당해요', walkTime: '약 10분' },
+  { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
 ];
 
 export default function Home() {
@@ -116,8 +116,6 @@ export default function Home() {
   }, []);
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
-    setUserLocation(new window.kakao.maps.LatLng(latitude, longitude));
-    
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}`);
@@ -149,8 +147,16 @@ export default function Home() {
     if (polylineInstance.current) polylineInstance.current.setMap(null);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      // (핵심 수정!) 현재 위치를 먼저 상태에 저장하고 지도도 이동시킵니다.
+      const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
+      setUserLocation(currentLocation);
+      if (mapInstance.current) {
+        mapInstance.current.setCenter(currentLocation);
+      }
+
       try {
-        const restaurants = await getNearbyRestaurants(position.coords.latitude, position.coords.longitude);
+        const restaurants = await getNearbyRestaurants(latitude, longitude);
         if (isRoulette) {
           if (restaurants.length >= 5) {
             setRouletteItems(restaurants.slice(0, 5));
@@ -162,7 +168,8 @@ export default function Home() {
         } else {
           if (restaurants.length > 0) {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
-            updateMapAndCard(restaurants[randomIndex]);
+            // (핵심 수정!) 저장된 현재 위치(currentLocation)를 함께 전달합니다.
+            updateMapAndCard(restaurants[randomIndex], currentLocation);
           } else {
             alert('주변에 추천할 음식점을 찾지 못했어요!');
           }
@@ -183,17 +190,16 @@ export default function Home() {
     setMustSpin(true);
   };
 
-  const updateMapAndCard = (place: KakaoPlaceItem) => {
+  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
-    if (mapInstance.current && userLocation) {
+    if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      mapInstance.current.setCenter(placePosition);
       
       markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
 
       polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [userLocation, placePosition],
+        path: [currentLoc, placePosition],
         strokeWeight: 5,
         strokeColor: '#007BFF',
         strokeOpacity: 0.8,
@@ -257,7 +263,7 @@ export default function Home() {
                         <Checkbox
                           id="select-all"
                           checked={selectedCategories.length === CATEGORIES.length}
-                          onCheckedChange={handleSelectAll}
+                          onCheckedChange={(checked) => handleSelectAll(checked)}
                         />
                         <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
                       </div>
@@ -272,12 +278,17 @@ export default function Home() {
                         defaultValue="800"
                         value={selectedDistance}
                         onValueChange={setSelectedDistance}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2"
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2"
                       >
                         {DISTANCES.map(dist => (
                           <div key={dist.value} className="flex items-center space-x-2">
                             <RadioGroupItem value={dist.value} id={dist.value} />
-                            <Label htmlFor={dist.value}>{dist.label}</Label>
+                            <Label htmlFor={dist.value} className="cursor-pointer">
+                              <div className="flex flex-col">
+                                <span className="font-semibold">{dist.label}</span>
+                                <span className="text-xs text-gray-500">{`(${dist.value}m ${dist.walkTime})`}</span>
+                              </div>
+                            </Label>
                           </div>
                         ))}
                       </RadioGroup>
@@ -333,7 +344,10 @@ export default function Home() {
                 onStopSpinning={() => {
                   setMustSpin(false);
                   setIsRouletteOpen(false);
-                  updateMapAndCard(rouletteItems[prizeNumber]);
+                  // (수정!) userLocation 상태를 사용합니다.
+                  if(userLocation) {
+                    updateMapAndCard(rouletteItems[prizeNumber], userLocation);
+                  }
                 }}
               />
             )}
