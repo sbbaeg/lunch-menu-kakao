@@ -8,7 +8,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
@@ -27,16 +33,24 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
+type KakaoRoadview = {
+  setPanoId: (panoId: number, position: KakaoLatLng) => void;
+};
+type KakaoRoadviewClient = {
+  getNearestPanoId: (position: KakaoLatLng, radius: number, callback: (panoId: number | null) => void) => void;
+};
 
 declare global {
   interface Window {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+        Roadview: new (container: HTMLElement) => KakaoRoadview;
+        RoadviewClient: new () => KakaoRoadviewClient;
       };
     };
   }
@@ -59,17 +73,31 @@ interface RouletteOption {
   option: string;
 }
 
+const CATEGORIES = [
+  "한식", "중식", "일식", "양식", "아시아음식", "분식",
+  "패스트푸드", "치킨", "피자", "뷔페", "카페", "술집"
+];
+
+const DISTANCES = [
+  { value: '500', label: '가까워요', walkTime: '약 5분' },
+  { value: '800', label: '적당해요', walkTime: '약 10분' },
+  { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
+];
+
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
-  // (수정!) 룰렛 상태 변수 이름을 mustSpin으로 통일합니다.
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
 
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedDistance, setSelectedDistance] = useState<string>('800');
+
   const mapContainer = useRef<HTMLDivElement | null>(null);
+  const roadviewContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
@@ -79,7 +107,7 @@ export default function Home() {
 
   useEffect(() => {
     const script = document.createElement('script');
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY}&autoload=false`;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY}&autoload=false&libraries=services,clusterer,drawing,roadview`;
     script.async = true;
     document.head.appendChild(script);
     script.onload = () => {
@@ -96,13 +124,51 @@ export default function Home() {
     };
   }, []);
 
-  const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
-    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}`);
-    if (!response.ok) {
-      throw new Error('API call failed');
+  useEffect(() => {
+    if (recommendation && roadviewContainer.current) {
+      const placePosition = new window.kakao.maps.LatLng(Number(recommendation.y), Number(recommendation.x));
+      const roadviewClient = new window.kakao.maps.RoadviewClient();
+      
+      roadviewContainer.current.innerHTML = '';
+
+      roadviewClient.getNearestPanoId(placePosition, 50, (panoId) => {
+        if (panoId && roadviewContainer.current) {
+          roadviewContainer.current.style.display = 'block';
+          new window.kakao.maps.Roadview(roadviewContainer.current).setPanoId(panoId, placePosition);
+        } else if(roadviewContainer.current) {
+          roadviewContainer.current.style.display = 'flex';
+          roadviewContainer.current.style.alignItems = 'center';
+          roadviewContainer.current.style.justifyContent = 'center';
+          roadviewContainer.current.innerHTML = '<p class="text-gray-500">로드뷰 정보가 없습니다.</p>';
+        }
+      });
     }
+  }, [recommendation]);
+
+
+  const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
+    const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
+    const radius = selectedDistance;
+    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}`);
+    if (!response.ok) throw new Error('API call failed');
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
+  };
+  
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategories(prev =>
+      prev.includes(category)
+        ? prev.filter(c => c !== category)
+        : [...prev, category]
+    );
+  };
+  
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    if (checked === true) {
+      setSelectedCategories(CATEGORIES);
+    } else {
+      setSelectedCategories([]);
+    }
   };
 
   const recommendProcess = async (isRoulette: boolean) => {
@@ -143,14 +209,17 @@ export default function Home() {
       } finally {
         setLoading(false);
       }
-    }, handleError);
+    }, (error) => {
+        console.error("Geolocation error:", error);
+        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
+        setLoading(false);
+    });
   };
-  
+
   const handleSpinClick = () => {
     if (mustSpin) return;
     const newPrizeNumber = Math.floor(Math.random() * rouletteItems.length);
     setPrizeNumber(newPrizeNumber);
-    // (수정!) setStart 대신 setMustSpin을 사용합니다.
     setMustSpin(true);
   };
 
@@ -170,12 +239,6 @@ export default function Home() {
       });
       polylineInstance.current.setMap(mapInstance.current);
     }
-  };
-
-  const handleError = (error: GeolocationPositionError) => {
-    console.error("Geolocation error:", error);
-    alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
-    setLoading(false);
   };
 
   const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
@@ -198,6 +261,73 @@ export default function Home() {
               <Button onClick={() => recommendProcess(true)} disabled={loading || !isMapReady} size="lg" className="flex-1">
                 음식점 룰렛
               </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="lg">필터</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>검색 필터 설정</DialogTitle>
+                  </DialogHeader>
+                  
+                  <div className="py-4 space-y-4">
+                    <div>
+                      <Label className="text-lg font-semibold">음식 종류</Label>
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        {CATEGORIES.map(category => (
+                          <div key={category} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={category}
+                              checked={selectedCategories.includes(category)}
+                              onCheckedChange={() => handleCategoryChange(category)}
+                            />
+                            <Label htmlFor={category}>{category}</Label>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center space-x-2 mt-4 pt-4 border-t">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectedCategories.length === CATEGORIES.length}
+                          onCheckedChange={(checked) => handleSelectAll(checked)}
+                        />
+                        <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-200"></div>
+
+                    <div>
+                      <Label className="text-lg font-semibold">검색 반경</Label>
+                      <p className="text-sm text-gray-500">(선택하지 않으면 800m(도보 10분)으로 검색됩니다.)</p>
+                      <RadioGroup
+                        defaultValue="800"
+                        value={selectedDistance}
+                        onValueChange={setSelectedDistance}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2"
+                      >
+                        {DISTANCES.map(dist => (
+                          <div key={dist.value} className="flex items-center space-x-2">
+                            <RadioGroupItem value={dist.value} id={dist.value} />
+                            <Label htmlFor={dist.value} className="cursor-pointer">
+                              <div className="flex flex-col">
+                                <span className="font-semibold">{dist.label}</span>
+                                <span className="text-xs text-gray-500">{`(${dist.value}m ${dist.walkTime})`}</span>
+                              </div>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button>완료</Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
             
             {recommendation ? (
@@ -205,7 +335,8 @@ export default function Home() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
+                <CardContent className="text-sm text-gray-700 space-y-2">
+                  <div ref={roadviewContainer} className="w-full h-40 border rounded-md bg-gray-100 mb-2"></div>
                   <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                   <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                 </CardContent>
@@ -234,14 +365,15 @@ export default function Home() {
           <div className="flex flex-col justify-center items-center space-y-6">
             {rouletteData.length > 0 && (
               <Wheel
-                // (수정!) start 대신 mustStartSpinning을 사용합니다.
                 mustStartSpinning={mustSpin}
                 prizeNumber={prizeNumber}
                 data={rouletteData}
                 onStopSpinning={() => {
                   setMustSpin(false);
                   setIsRouletteOpen(false);
-                  updateMapAndCard(rouletteItems[prizeNumber], userLocation!);
+                  if(userLocation) {
+                    updateMapAndCard(rouletteItems[prizeNumber], userLocation);
+                  }
                 }}
               />
             )}
