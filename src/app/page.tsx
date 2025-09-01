@@ -110,6 +110,7 @@ interface GoogleDetails {
   phone?: string;
 }
 
+// (추가!) 경로 좌표 타입을 프론트엔드에도 정의합니다.
 interface DirectionPoint {
   lat: number;
   lng: number;
@@ -378,7 +379,6 @@ export default function Home() {
     }
   };
   
-  // (수정!) 길 안내 URL 변수들을 return 문 바로 위로 이동
   const googleMapsUrl = userLocation && recommendation ? 
     `https://www.google.com/maps/dir/?api=1&origin=${userLocation.getLat()},${userLocation.getLng()}&destination=${recommendation.y},${recommendation.x}&travelmode=walking` 
     : '#';
