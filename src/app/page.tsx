@@ -34,7 +34,7 @@ import Image from 'next/image';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (수정!) 빈 객체 {} 타입을 실제 속성을 가진 타입으로 정의합니다.
+// 타입 정의
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -57,7 +57,7 @@ type KakaoPoint = {
   x: number;
   y: number;
 };
-type KakaoMarkerImage = object; // MarkerImage는 반환 객체이므로 object로 충분합니다.
+type KakaoMarkerImage = object;
 
 declare global {
   interface Window {
@@ -110,6 +110,7 @@ interface GoogleDetails {
   phone?: string;
 }
 
+// (추가!) 경로 좌표 타입을 프론트엔드에도 정의합니다.
 interface DirectionPoint {
   lat: number;
   lng: number;
@@ -221,12 +222,6 @@ export default function Home() {
     fetchGoogleDetails();
   }, [recommendation]);
 
-  useEffect(() => {
-    if (sortOrder === 'accuracy') {
-      setResultCount(5);
-    }
-  }, [sortOrder]);
-
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
@@ -268,7 +263,7 @@ export default function Home() {
         if (isRoulette) {
           const rouletteCandidates = restaurants.slice(0, resultCount);
           if (rouletteCandidates.length < 2) {
-            alert('주변에 추첨할 음식점이 2개 미만입니다.');
+            alert(`주변에 추첨할 음식점이 ${resultCount}개 미만입니다.`);
             setLoading(false);
             return;
           }
@@ -276,12 +271,13 @@ export default function Home() {
           setIsRouletteOpen(true);
           setMustSpin(false);
         } else {
-          if (sortOrder === 'distance') {
+          if (sortOrder === 'accuracy') {
+            const shuffled = [...restaurants].sort(() => 0.5 - Math.random());
+            setRestaurantList(shuffled.slice(0, resultCount));
+            displayMarkers(shuffled.slice(0, resultCount), currentLocation);
+          } else { // 가까운 순
             setRestaurantList(restaurants);
             displayMarkers(restaurants, currentLocation);
-          } else {
-            const randomIndex = Math.floor(Math.random() * restaurants.length);
-            updateMapAndCard(restaurants[randomIndex], currentLocation);
           }
         }
       } catch (error) {
@@ -314,22 +310,19 @@ export default function Home() {
   };
 
   const updateMapAndCard = async (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
-    if(sortOrder === 'accuracy') {
-        setRestaurantList([]);
-    }
     setRecommendation(place);
 
     if (mapInstance.current) {
       const imageSize = new window.kakao.maps.Size(24, 35);
       const blueMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
       const redMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png', imageSize);
-
+      
       markers.current.forEach(item => {
         item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
       });
 
       if (polylineInstance.current) polylineInstance.current.setMap(null);
-
+      
       try {
         const response = await fetch(`/api/directions?origin=${currentLoc.getLng()},${currentLoc.getLat()}&destination=${place.x},${place.y}`);
         const data = await response.json();
@@ -352,7 +345,6 @@ export default function Home() {
   
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
-    setRecommendation(null);
     
     const imageSize = new window.kakao.maps.Size(24, 35);
     const markerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
@@ -551,16 +543,8 @@ export default function Home() {
                     )}
                   </CardContent>
                   <CardFooter className="pt-3 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" disabled={!userLocation}>
-                      <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">
-                        Google 길 안내
-                      </a>
-                    </Button>
-                    <Button asChild className="w-full" variant="secondary" disabled={!userLocation}>
-                      <a href={naverMapUrl} target="_blank" rel="noopener noreferrer">
-                        네이버 길 안내
-                      </a>
-                    </Button>
+                    <Button asChild className="w-full" disabled={!userLocation}><a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">Google 길 안내</a></Button>
+                    <Button asChild className="w-full" variant="secondary" disabled={!userLocation}><a href={naverMapUrl} target="_blank" rel="noopener noreferrer">네이버 길 안내</a></Button>
                   </CardFooter>
                 </Card>
               )}
