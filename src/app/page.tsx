@@ -447,14 +447,14 @@ export default function Home() {
                       className={`w-full border shadow-sm cursor-pointer hover:border-blue-500 transition-all ${recommendation?.id === place.id ? 'border-blue-500 border-2' : ''}`}
                       onClick={() => handleListItemClick(place)}
                     >
-                      <CardHeader className="p-3 flex flex-row items-center justify-between">
+                      <CardHeader className="px-2 pt-px pb-1 flex flex-row items-center justify-between">
                         <CardTitle className="text-md">{place.place_name}</CardTitle>
                         <span className="text-xs text-gray-600 whitespace-nowrap">{place.distance}m</span>
                       </CardHeader>
-                      <CardContent className="p-3 pt-0 text-xs text-gray-700">
+                      <CardContent className="px-2 pb-px pt-0 text-xs text-gray-700">
                         <p>{place.category_name}</p>
                         <a href={place.place_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block w-full">
-                          <Button variant="outline" size="sm" className="w-full">
+                          <Button size="sm" className="w-full bg-black text-white hover:bg-gray-800">
                             카카오맵 상세보기
                           </Button>
                         </a>
