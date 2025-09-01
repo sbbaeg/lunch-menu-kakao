@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// (수정!) any 타입을 모두 제거하고 구체적인 타입으로 정의합니다.
+// 카카오맵 관련 타입을 명확하게 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -52,8 +52,8 @@ interface KakaoPlaceItem {
   place_name: string;
   category_name: string;
   road_address_name: string;
-  x: string;
-  y: string;
+  x: string; // lng
+  y: string; // lat
   place_url: string;
 }
 
@@ -63,6 +63,11 @@ interface KakaoSearchResponse {
 
 interface RouletteOption {
   option: string;
+}
+
+// (추가!) Google API 응답 타입
+interface GoogleDetails {
+  photos: string[];
 }
 
 const CATEGORIES = [
@@ -78,6 +83,10 @@ const DISTANCES = [
 
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
+  // (추가!) Google 상세 정보를 저장할 상태
+  const [googleDetails, setGoogleDetails] = useState<GoogleDetails | null>(null);
+  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   
@@ -128,6 +137,30 @@ export default function Home() {
       mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
     }
   }, [isMapReady]);
+
+  // (추가!) 추천 가게가 정해지면 Google 상세 정보 가져오기
+  useEffect(() => {
+    if (!recommendation) return;
+
+    const fetchGoogleDetails = async () => {
+      setIsDetailsLoading(true);
+      setGoogleDetails(null);
+      try {
+        const response = await fetch(`/api/details?name=${encodeURIComponent(recommendation.place_name)}&lat=${recommendation.y}&lng=${recommendation.x}`);
+        if (response.ok) {
+          const data: GoogleDetails = await response.json();
+          setGoogleDetails(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch Google details:", error);
+      } finally {
+        setIsDetailsLoading(false);
+      }
+    };
+
+    fetchGoogleDetails();
+  }, [recommendation]);
+
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -194,7 +227,7 @@ export default function Home() {
       }
     }, (error) => {
         console.error("Geolocation error:", error);
-        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
+        alert("위치 정보를 가져오는 데 실패했습니다.");
         setLoading(false);
     });
   };
@@ -313,28 +346,54 @@ export default function Home() {
               </Dialog>
             </div>
             
-            {recommendation ? (
-              <Card className="w-full max-w-sm border shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-gray-700 space-y-1">
-                  <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                  <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                </CardContent>
-                <CardFooter className="pt-3">
-                  <Button asChild className="w-full" variant="secondary">
-                    <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
-                      카카오맵에서 상세보기
-                    </a>
-                  </Button>
-                </CardFooter>
-              </Card>
-            ) : (
-                <Card className="w-full max-w-sm flex items-center justify-center h-40 text-gray-500 border shadow-sm">
-                    <p>음식점을 추천받아보세요!</p>
+            {/* (수정!) 두 개의 카드를 div로 감싸줍니다. */}
+            <div className="w-full max-w-sm space-y-4">
+              {recommendation && (
+                <Card className="w-full border shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-gray-700 space-y-1">
+                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+                  </CardContent>
+                  <CardFooter className="pt-3">
+                    <Button asChild className="w-full" variant="secondary">
+                      <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
+                        카카오맵에서 상세보기
+                      </a>
+                    </Button>
+                  </CardFooter>
                 </Card>
-            )}
+              )}
+
+              {/* (추가!) Google 상세 정보 카드 */}
+              {recommendation && (
+                <Card className="w-full border shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-lg">가게 사진 (Google)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isDetailsLoading && <p>사진을 불러오는 중...</p>}
+                    {googleDetails?.photos && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {googleDetails.photos.map((photoUrl, index) => (
+                          <img key={index} src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="rounded-md object-cover aspect-square" />
+                        ))}
+                      </div>
+                    )}
+                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                  </CardContent>
+                </Card>
+              )}
+
+              {!recommendation && (
+                <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
+                  <p>음식점을 추천받아보세요!</p>
+                </Card>
+              )}
+            </div>
+
           </div>
         </div>
       </Card>

@@ -1,8 +1,6 @@
-// 파일 경로: src/app/api/details/route.ts
-
 import { NextResponse } from 'next/server';
 
-// Google Places API 응답 타입을 정의합니다.
+// Google Places API 응답 타입을 명확하게 정의합니다.
 interface GooglePhoto {
   photo_reference: string;
 }
@@ -31,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Name and location are required' }, { status: 400 });
   }
 
-  const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+  const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
   try {
     // 1단계: 가게 이름과 좌표로 Google Place ID 찾기
