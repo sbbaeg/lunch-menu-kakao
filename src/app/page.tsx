@@ -21,6 +21,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Slider } from "@/components/ui/slider";
 import {
   Carousel,
   CarouselContent,
@@ -33,7 +34,7 @@ import Image from 'next/image';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// 카카오맵 관련 타입을 명확하게 정의합니다.
+// 타입 정의
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -63,12 +64,14 @@ declare global {
 }
 
 interface KakaoPlaceItem {
+  id: string; // id 추가
   place_name: string;
   category_name: string;
   road_address_name: string;
   x: string; // lng
   y: string; // lat
   place_url: string;
+  distance: string;
 }
 
 interface KakaoSearchResponse {
@@ -77,13 +80,8 @@ interface KakaoSearchResponse {
 
 interface RouletteOption {
   option: string;
-  style?: {
-    backgroundColor?: string;
-    textColor?: string;
-  };
 }
 
-// Google API 응답 타입을 정의합니다.
 interface GoogleOpeningHours {
   open_now: boolean;
   weekday_text?: string[];
@@ -134,6 +132,7 @@ const getTodaysOpeningHours = (openingHours?: GoogleOpeningHours): string | null
 
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
+  const [restaurantList, setRestaurantList] = useState<KakaoPlaceItem[]>([]);
   const [googleDetails, setGoogleDetails] = useState<GoogleDetails | null>(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
@@ -141,12 +140,17 @@ export default function Home() {
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
+
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
+  const [sortOrder, setSortOrder] = useState<'accuracy' | 'distance'>('accuracy');
+  const [resultCount, setResultCount] = useState<number>(5);
+
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
-  const markerInstance = useRef<KakaoMarker | null>(null);
+  const markers = useRef<KakaoMarker[]>([]);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
 
@@ -167,7 +171,7 @@ export default function Home() {
       window.kakao.maps.load(() => setIsMapReady(true));
     };
   }, []);
-
+  
   useEffect(() => {
     if (isMapReady && mapContainer.current && !mapInstance.current) {
       const mapOption = {
@@ -177,7 +181,7 @@ export default function Home() {
       mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
     }
   }, [isMapReady]);
-
+  
   useEffect(() => {
     if (!recommendation) return;
     const fetchGoogleDetails = async () => {
@@ -198,25 +202,26 @@ export default function Home() {
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
-    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}`);
+    const sort = sortOrder === 'distance' ? 'distance' : 'accuracy';
+    const size = resultCount;
+    
+    const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}&sort=${sort}&size=${size}`);
     if (!response.ok) throw new Error('API call failed');
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
   };
-
+  
   const handleCategoryChange = (category: string) => {
     setSelectedCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
   };
-
+  
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
     setSelectedCategories(checked === true ? CATEGORIES : []);
   };
 
   const recommendProcess = (isRoulette: boolean) => {
     setLoading(true);
-    setRecommendation(null);
-    if (markerInstance.current) markerInstance.current.setMap(null);
-    if (polylineInstance.current) polylineInstance.current.setMap(null);
+    clearMapAndResults();
 
     navigator.geolocation.getCurrentPosition(async (position) => {
       const { latitude, longitude } = position.coords;
@@ -226,20 +231,24 @@ export default function Home() {
 
       try {
         const restaurants = await getNearbyRestaurants(latitude, longitude);
+        if (restaurants.length === 0) {
+            alert('주변에 조건에 맞는 음식점을 찾지 못했어요!');
+            setLoading(false);
+            return;
+        }
+
         if (isRoulette) {
-          if (restaurants.length >= 5) {
-            setRouletteItems(restaurants.slice(0, 5));
-            setIsRouletteOpen(true);
-            setMustSpin(false);
-          } else {
-            alert('주변에 추첨할 음식점이 5개 미만입니다.');
-          }
+          const rouletteCandidates = restaurants.length >= 5 ? restaurants.slice(0, 5) : restaurants;
+          setRouletteItems(rouletteCandidates);
+          setIsRouletteOpen(true);
+          setMustSpin(false);
         } else {
-          if (restaurants.length > 0) {
+          if (sortOrder === 'distance') {
+            setRestaurantList(restaurants);
+            displayMarkers(restaurants, currentLocation);
+          } else {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
             updateMapAndCard(restaurants[randomIndex], currentLocation);
-          } else {
-            alert('주변에 추천할 음식점을 찾지 못했어요!');
           }
         }
       } catch (error) {
@@ -261,13 +270,25 @@ export default function Home() {
     setPrizeNumber(newPrizeNumber);
     setMustSpin(true);
   };
+  
+  const clearMapAndResults = () => {
+    setRecommendation(null);
+    setRestaurantList([]);
+    markers.current.forEach(marker => marker.setMap(null));
+    markers.current = [];
+    if (polylineInstance.current) polylineInstance.current.setMap(null);
+  };
 
   const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
+    clearMapAndResults();
     setRecommendation(place);
     if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
-      markerInstance.current.setMap(mapInstance.current);
+      
+      const marker = new window.kakao.maps.Marker({ position: placePosition });
+      marker.setMap(mapInstance.current);
+      markers.current.push(marker);
+
       polylineInstance.current = new window.kakao.maps.Polyline({
         path: [currentLoc, placePosition],
         strokeWeight: 5,
@@ -278,16 +299,21 @@ export default function Home() {
     }
   };
   
-  const rouletteData: RouletteOption[] = rouletteItems.map((item, index) => {
-    const colors = ['#FF6B6B', '#FFD966', '#96F291', '#66D9E8', '#63A4FF'];
-    return { 
-      option: item.place_name,
-      style: {
-        backgroundColor: colors[index % colors.length],
-        textColor: '#333333'
-      }
-    };
-  });
+  const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
+    if (!mapInstance.current) return;
+    places.forEach(place => {
+      const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
+      const marker = new window.kakao.maps.Marker({ position: placePosition });
+      marker.setMap(mapInstance.current);
+      markers.current.push(marker);
+    });
+    // (수정!) 첫 번째 항목을 기본 선택으로 설정
+    if (places.length > 0) {
+      setRecommendation(places[0]);
+    }
+  };
+
+  const rouletteData: RouletteOption[] = rouletteItems.map((item) => ({ option: item.place_name }));
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -329,7 +355,6 @@ export default function Home() {
                     <div className="border-t border-gray-200"></div>
                     <div>
                       <Label className="text-lg font-semibold">검색 반경</Label>
-                      <p className="text-sm text-gray-500">(기본값: 800m)</p>
                       <RadioGroup defaultValue="800" value={selectedDistance} onValueChange={setSelectedDistance} className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
                         {DISTANCES.map(dist => (
                           <div key={dist.value} className="flex items-center space-x-2">
@@ -341,6 +366,19 @@ export default function Home() {
                         ))}
                       </RadioGroup>
                     </div>
+                    <div className="border-t border-gray-200"></div>
+                    <div>
+                      <Label className="text-lg font-semibold">정렬 방식</Label>
+                      <RadioGroup defaultValue="accuracy" value={sortOrder} onValueChange={(value) => setSortOrder(value as 'accuracy' | 'distance')} className="flex gap-4 pt-2">
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="accuracy" id="sort-accuracy" /><Label htmlFor="sort-accuracy">랜덤 추천</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="distance" id="sort-distance" /><Label htmlFor="sort-distance">가까운 순</Label></div>
+                      </RadioGroup>
+                    </div>
+                    <div className="border-t border-gray-200"></div>
+                    <div>
+                      <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
+                      <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                    </div>
                   </div>
                   <DialogFooter><DialogClose asChild><Button>완료</Button></DialogClose></DialogFooter>
                 </DialogContent>
@@ -348,93 +386,88 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              <Card className="w-full border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xl h-8">{recommendation ? recommendation.place_name : "추천 음식점"}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
-                  {recommendation ? (
-                    <>
-                      <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                      <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                    </>
-                  ) : <p>음식점을 추천받아보세요!</p>}
-                </CardContent>
-                <CardFooter className="pt-2 grid grid-cols-2 gap-2">
-                  <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
-                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">
-                      카카오맵
-                    </a>
-                  </Button>
-                  {/* (수정!) 가게 이름과 주소를 함께 검색하여 정확도를 높입니다. */}
-                  <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
-                    <a 
-                      href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation?.place_name} ${recommendation?.road_address_name}`)}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
+              {/* (수정!) '가까운 순' 목록 표시 로직 */}
+              {sortOrder === 'distance' && restaurantList.length > 0 ? (
+                <div className="space-y-2 max-h-[480px] overflow-y-auto">
+                  {restaurantList.map(place => (
+                    <Card 
+                      key={place.id} 
+                      className="w-full border shadow-sm cursor-pointer hover:border-blue-500"
+                      onClick={() => userLocation && updateMapAndCard(place, userLocation)}
                     >
-                      네이버 검색
-                    </a>
-                  </Button>
-                </CardFooter>
-              </Card>
+                      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-lg">{place.place_name}</CardTitle>
+                        <span className="text-sm text-gray-600">{place.distance}m</span>
+                      </CardHeader>
+                      <CardContent className="pt-0 text-sm text-gray-700">
+                        <p>{place.category_name}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : recommendation ? (
+                <Card className="w-full border shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-xl h-8">{recommendation.place_name}</CardTitle></CardHeader>
+                  <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
+                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+                  </CardContent>
+                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
+                    <Button asChild className="w-full" variant="secondary" disabled={!recommendation}><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
+                    <Button asChild className="w-full" variant="secondary" disabled={!recommendation}><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
+                  </CardFooter>
+                </Card>
+              ) : (
+                <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
+                  <p>음식점을 추천받아보세요!</p>
+                </Card>
+              )}
               
-              <Card className="w-full border shadow-sm min-h-[200px]">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">
-                    {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm space-y-2">
-                  {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
-                  {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
-                  
-                  {googleDetails?.rating && (
-                    <div className="flex items-center gap-1">
-                      <StarRating rating={googleDetails.rating} />
-                    </div>
-                  )}
-
-                  {googleDetails?.opening_hours && (
-                    <div className="flex flex-col">
-                      <p><strong>영업:</strong> 
-                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-500 ml-1">
-                        (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
-                      </p>
-                    </div>
-                  )}
-
-                  {googleDetails?.phone && (
-                    <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
-                  )}
-
-                  {googleDetails?.photos && googleDetails.photos.length > 0 && (
-                    <div>
-                      <strong>사진:</strong>
-                      <Carousel className="w-full max-w-xs mx-auto mt-2">
-                        <CarouselContent>
-                          {googleDetails.photos.map((photoUrl, index) => (
-                            <CarouselItem key={index}>
-                              <Dialog>
-                                <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
-                                <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                  <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
-                                </DialogContent>
-                              </Dialog>
-                            </CarouselItem>
-                          ))}
-                        </CarouselContent>
-                        <CarouselPrevious className="left-2" />
-                        <CarouselNext className="right-2" />
-                      </Carousel>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Google 상세 정보 카드 */}
+              {recommendation && (
+                <Card className="w-full border shadow-sm min-h-[200px]">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2">
+                    {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
+                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                    {googleDetails?.rating && (
+                      <div className="flex items-center gap-1"><StarRating rating={googleDetails.rating} /></div>
+                    )}
+                    {googleDetails?.opening_hours && (
+                      <div className="flex flex-col">
+                        <p><strong>영업:</strong> <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}</span></p>
+                        <p className="text-xs text-gray-500 ml-1">(오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})</p>
+                      </div>
+                    )}
+                    {googleDetails?.phone && (
+                      <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
+                    )}
+                    {googleDetails?.photos && googleDetails.photos.length > 0 && (
+                      <div>
+                        <strong>사진:</strong>
+                        <Carousel className="w-full max-w-xs mx-auto mt-2">
+                          <CarouselContent>
+                            {googleDetails.photos.map((photoUrl, index) => (
+                              <CarouselItem key={index}>
+                                <Dialog>
+                                  <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
+                                  <DialogContent className="max-w-3xl h-[80vh] p-2">
+                                    <Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
+                                  </DialogContent>
+                                </Dialog>
+                              </CarouselItem>
+                            ))}
+                          </CarouselContent>
+                          <CarouselPrevious className="left-2" />
+                          <CarouselNext className="right-2" />
+                        </Carousel>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </div>
