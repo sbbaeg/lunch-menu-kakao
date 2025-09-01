@@ -97,6 +97,12 @@ interface GoogleDetails {
   phone?: string;
 }
 
+// (추가!) 경로 좌표 타입을 프론트엔드에도 정의합니다.
+interface DirectionPoint {
+  lat: number;
+  lng: number;
+}
+
 const CATEGORIES = [
   "한식", "중식", "일식", "양식", "아시아음식", "분식",
   "패스트푸드", "치킨", "피자", "뷔페", "카페", "술집"
@@ -152,7 +158,7 @@ export default function Home() {
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
-  const markers = useRef<KakaoMarker[]>([]); // (수정!) 마커 배열을 단순화합니다.
+  const markers = useRef<KakaoMarker[]>([]);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
   
   const [loading, setLoading] = useState(false);
@@ -202,7 +208,13 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
-  
+
+  useEffect(() => {
+    if (sortOrder === 'accuracy') {
+      setResultCount(5);
+    }
+  }, [sortOrder]);
+
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
@@ -252,7 +264,6 @@ export default function Home() {
           setIsRouletteOpen(true);
           setMustSpin(false);
         } else {
-          // (수정!) 랜덤 추천도 이제 목록을 표시합니다.
           const finalRestaurants = sortOrder === 'distance' 
             ? restaurants 
             : [...restaurants].sort(() => 0.5 - Math.random()).slice(0, resultCount);
@@ -289,24 +300,32 @@ export default function Home() {
     if (polylineInstance.current) polylineInstance.current.setMap(null);
   };
 
-  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
+  const updateMapAndCard = async (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
 
     if (mapInstance.current) {
       if (polylineInstance.current) polylineInstance.current.setMap(null);
-      const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       
-      polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [currentLoc, placePosition],
-        strokeWeight: 5,
-        strokeColor: '#007BFF',
-        strokeOpacity: 0.8,
-      });
-      polylineInstance.current.setMap(mapInstance.current);
+      try {
+        const response = await fetch(`/api/directions?origin=${currentLoc.getLng()},${currentLoc.getLat()}&destination=${place.x},${place.y}`);
+        const data = await response.json();
+        
+        if (data.path && data.path.length > 0) {
+          const linePath = data.path.map((point: DirectionPoint) => new window.kakao.maps.LatLng(point.lat, point.lng));
+          polylineInstance.current = new window.kakao.maps.Polyline({
+            path: linePath,
+            strokeWeight: 6,
+            strokeColor: '#007BFF',
+            strokeOpacity: 0.8,
+          });
+          polylineInstance.current.setMap(mapInstance.current);
+        }
+      } catch (error) {
+        console.error("Failed to fetch directions:", error);
+      }
     }
   };
   
-  // (수정!) 마커 로직을 단순화합니다.
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
 
@@ -398,7 +417,6 @@ export default function Home() {
                         <div className="flex items-center space-x-2"><RadioGroupItem value="distance" id="sort-distance" /><Label htmlFor="sort-distance">가까운 순</Label></div>
                       </RadioGroup>
                     </div>
-                    {/* (수정!) 슬라이더를 항상 표시합니다. */}
                     <div className="border-t border-gray-200"></div>
                     <div>
                       <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
@@ -411,7 +429,6 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {/* (수정!) '가까운 순' 또는 '랜덤 추천' 목록 표시 */}
               {restaurantList.length > 0 ? (
                 <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
                   <p className="text-sm font-semibold text-gray-600 pl-1">{sortOrder === 'distance' ? '가까운 순 결과' : '랜덤 추천 결과'}: {restaurantList.length}개</p>
@@ -437,8 +454,7 @@ export default function Home() {
                 </Card>
               )}
               
-              {/* (수정!) 목록이 있을 때만 Google 상세 정보 카드 표시 */}
-              {restaurantList.length > 0 && recommendation && (
+              {recommendation && (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
@@ -480,7 +496,6 @@ export default function Home() {
                       </div>
                     )}
                   </CardContent>
-                  {/* (수정!) 길 안내 버튼을 제거합니다. */}
                 </Card>
               )}
             </div>
