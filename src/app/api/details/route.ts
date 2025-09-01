@@ -11,6 +11,7 @@ interface GoogleOpeningHours {
 }
 
 interface GooglePlace {
+  url?: string;
   photos?: GooglePhoto[];
   rating?: number;
   opening_hours?: GoogleOpeningHours;
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
     const placeId = findPlaceData.candidates[0].place_id;
 
-    const fields = 'photos,rating,opening_hours,formatted_phone_number';
+    const fields = 'url,photos,rating,opening_hours,formatted_phone_number';
     const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${GOOGLE_API_KEY}&language=ko`;
     
     const detailsRes = await fetch(detailsUrl);
@@ -72,6 +73,7 @@ export async function GET(request: Request) {
     ) : [];
 
     return NextResponse.json({
+      url: result.url,
       photos: photoUrls,
       rating: result.rating,
       opening_hours: result.opening_hours,

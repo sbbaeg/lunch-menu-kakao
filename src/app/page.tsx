@@ -92,6 +92,7 @@ interface GoogleOpeningHours {
   weekday_text?: string[];
 }
 interface GoogleDetails {
+  url?: string;
   photos: string[];
   rating?: number;
   opening_hours?: GoogleOpeningHours;
@@ -475,6 +476,13 @@ export default function Home() {
                     <p className="text-xs text-gray-500">Google Maps 제공</p>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2 pt-2">
+                    {googleDetails?.url && (
+                      <a href={googleDetails.url} target="_blank" rel="noopener noreferrer" className="mb-2 inline-block">
+                        <Button variant="link" size="sm" className="p-0 h-auto text-xs">
+                          구글맵 상세보기
+                        </Button>
+                      </a>
+                    )}
                     {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
                     {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
                     {googleDetails?.rating && (
