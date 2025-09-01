@@ -40,7 +40,6 @@ type KakaoMap = {
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
-  setImage: (image: KakaoMarkerImage) => void;
 };
 type KakaoPolyline = {
   setMap: (map: KakaoMap | null) => void;
@@ -49,15 +48,6 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
-type KakaoSize = {
-  width: number;
-  height: number;
-};
-type KakaoPoint = {
-  x: number;
-  y: number;
-};
-type KakaoMarkerImage = object;
 
 declare global {
   interface Window {
@@ -66,11 +56,8 @@ declare global {
         load: (callback: () => void) => void;
         Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (options: { position: KakaoLatLng; image?: KakaoMarkerImage; }) => KakaoMarker;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
-        Size: new (width: number, height: number) => KakaoSize;
-        Point: new (x: number, y: number) => KakaoPoint;
-        MarkerImage: new (src: string, size: KakaoSize, options?: { offset: KakaoPoint; }) => KakaoMarkerImage;
       };
     };
   }
@@ -108,12 +95,6 @@ interface GoogleDetails {
   rating?: number;
   opening_hours?: GoogleOpeningHours;
   phone?: string;
-}
-
-// (추가!) 경로 좌표 타입을 프론트엔드에도 정의합니다.
-interface DirectionPoint {
-  lat: number;
-  lng: number;
 }
 
 const CATEGORIES = [
@@ -171,7 +152,7 @@ export default function Home() {
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
-  const markers = useRef<{ id: string; marker: KakaoMarker }[]>([]);
+  const markers = useRef<KakaoMarker[]>([]); // (수정!) 마커 배열을 단순화합니다.
   const polylineInstance = useRef<KakaoPolyline | null>(null);
   
   const [loading, setLoading] = useState(false);
@@ -221,7 +202,7 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
-
+  
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
@@ -271,14 +252,13 @@ export default function Home() {
           setIsRouletteOpen(true);
           setMustSpin(false);
         } else {
-          if (sortOrder === 'accuracy') {
-            const shuffled = [...restaurants].sort(() => 0.5 - Math.random());
-            setRestaurantList(shuffled.slice(0, resultCount));
-            displayMarkers(shuffled.slice(0, resultCount), currentLocation);
-          } else { // 가까운 순
-            setRestaurantList(restaurants);
-            displayMarkers(restaurants, currentLocation);
-          }
+          // (수정!) 랜덤 추천도 이제 목록을 표시합니다.
+          const finalRestaurants = sortOrder === 'distance' 
+            ? restaurants 
+            : [...restaurants].sort(() => 0.5 - Math.random()).slice(0, resultCount);
+
+          setRestaurantList(finalRestaurants);
+          displayMarkers(finalRestaurants, currentLocation);
         }
       } catch (error) {
         console.error('Error:', error);
@@ -304,59 +284,37 @@ export default function Home() {
     setRecommendation(null);
     setGoogleDetails(null);
     setRestaurantList([]);
-    markers.current.forEach(item => item.marker.setMap(null));
+    markers.current.forEach(marker => marker.setMap(null));
     markers.current = [];
     if (polylineInstance.current) polylineInstance.current.setMap(null);
   };
 
-  const updateMapAndCard = async (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
+  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     setRecommendation(place);
 
     if (mapInstance.current) {
-      const imageSize = new window.kakao.maps.Size(24, 35);
-      const blueMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
-      const redMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png', imageSize);
-      
-      markers.current.forEach(item => {
-        item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
-      });
-
       if (polylineInstance.current) polylineInstance.current.setMap(null);
+      const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       
-      try {
-        const response = await fetch(`/api/directions?origin=${currentLoc.getLng()},${currentLoc.getLat()}&destination=${place.x},${place.y}`);
-        const data = await response.json();
-        
-        if (data.path && data.path.length > 0) {
-          const linePath = data.path.map((point: DirectionPoint) => new window.kakao.maps.LatLng(point.lat, point.lng));
-          polylineInstance.current = new window.kakao.maps.Polyline({
-            path: linePath,
-            strokeWeight: 6,
-            strokeColor: '#FF0000',
-            strokeOpacity: 0.8,
-          });
-          polylineInstance.current.setMap(mapInstance.current);
-        }
-      } catch (error) {
-        console.error("Failed to fetch directions:", error);
-      }
+      polylineInstance.current = new window.kakao.maps.Polyline({
+        path: [currentLoc, placePosition],
+        strokeWeight: 5,
+        strokeColor: '#007BFF',
+        strokeOpacity: 0.8,
+      });
+      polylineInstance.current.setMap(mapInstance.current);
     }
   };
   
+  // (수정!) 마커 로직을 단순화합니다.
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
-    
-    const imageSize = new window.kakao.maps.Size(24, 35);
-    const markerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
 
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      const marker = new window.kakao.maps.Marker({
-        position: placePosition,
-        image: markerImage
-      });
+      const marker = new window.kakao.maps.Marker({ position: placePosition });
       marker.setMap(mapInstance.current);
-      markers.current.push({ id: place.id, marker });
+      markers.current.push(marker);
     });
     if (places.length > 0) {
       updateMapAndCard(places[0], currentLoc);
@@ -380,14 +338,6 @@ export default function Home() {
         updateMapAndCard(place, userLocation);
     }
   };
-
-  const googleMapsUrl = userLocation && recommendation ? 
-    `https://www.google.com/maps/dir/?api=1&origin=${userLocation.getLat()},${userLocation.getLng()}&destination=${recommendation.y},${recommendation.x}&travelmode=walking` 
-    : '#';
-    
-  const naverMapUrl = userLocation && recommendation ?
-    `https://m.map.naver.com/directions/walk.naver?start=${userLocation.getLng()},${userLocation.getLat()},현재%20위치&destination=${recommendation.x},${recommendation.y},${encodeURIComponent(recommendation.place_name)}`
-    : '#';
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -448,15 +398,12 @@ export default function Home() {
                         <div className="flex items-center space-x-2"><RadioGroupItem value="distance" id="sort-distance" /><Label htmlFor="sort-distance">가까운 순</Label></div>
                       </RadioGroup>
                     </div>
-                    {sortOrder === 'distance' && (
-                      <>
-                        <div className="border-t border-gray-200"></div>
-                        <div>
-                          <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
-                          <Slider id="result-count" defaultValue={[10]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
-                        </div>
-                      </>
-                    )}
+                    {/* (수정!) 슬라이더를 항상 표시합니다. */}
+                    <div className="border-t border-gray-200"></div>
+                    <div>
+                      <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
+                      <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                    </div>
                   </div>
                   <DialogFooter><DialogClose asChild><Button>완료</Button></DialogClose></DialogFooter>
                 </DialogContent>
@@ -464,8 +411,10 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {sortOrder === 'distance' && restaurantList.length > 0 ? (
+              {/* (수정!) '가까운 순' 또는 '랜덤 추천' 목록 표시 */}
+              {restaurantList.length > 0 ? (
                 <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
+                  <p className="text-sm font-semibold text-gray-600 pl-1">{sortOrder === 'distance' ? '가까운 순 결과' : '랜덤 추천 결과'}: {restaurantList.length}개</p>
                   {restaurantList.map(place => (
                     <Card 
                       key={place.id} 
@@ -482,25 +431,14 @@ export default function Home() {
                     </Card>
                   ))}
                 </div>
-              ) : recommendation ? (
-                <Card className="w-full border shadow-sm">
-                  <CardHeader className="pb-2"><CardTitle className="text-xl h-8">{recommendation.place_name}</CardTitle></CardHeader>
-                  <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
-                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                  </CardContent>
-                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" variant="secondary"><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
-                    <Button asChild className="w-full" variant="secondary"><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
-                  </CardFooter>
-                </Card>
               ) : (
                 <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
                   <p>음식점을 추천받아보세요!</p>
                 </Card>
               )}
               
-              {recommendation && (
+              {/* (수정!) 목록이 있을 때만 Google 상세 정보 카드 표시 */}
+              {restaurantList.length > 0 && recommendation && (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
@@ -542,10 +480,7 @@ export default function Home() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="pt-3 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" disabled={!userLocation}><a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">Google 길 안내</a></Button>
-                    <Button asChild className="w-full" variant="secondary" disabled={!userLocation}><a href={naverMapUrl} target="_blank" rel="noopener noreferrer">네이버 길 안내</a></Button>
-                  </CardFooter>
+                  {/* (수정!) 길 안내 버튼을 제거합니다. */}
                 </Card>
               )}
             </div>
