@@ -3,11 +3,15 @@
 declare namespace kakao.maps {
     class LatLng {
         constructor(lat: number, lng: number);
+        getLat(): number;
+        getLng(): number;
     }
+
     class Map {
         constructor(container: HTMLElement, options: object);
         setCenter(latlng: LatLng): void;
     }
+
     class Marker {
         constructor(options: object);
         setMap(map: Map | null): void;
@@ -15,9 +19,5 @@ declare namespace kakao.maps {
 }
 
 interface Window {
-    kakao: any;
+    kakao: any; // 타입 에러를 피하기 위해 임시로 any를 사용합니다.
 }
-
-type KakaoMap = kakao.maps.Map;
-type KakaoMapsLatLng = kakao.maps.LatLng;
-type KakaoMapsMarker = kakao.maps.Marker;
