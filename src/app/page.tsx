@@ -21,13 +21,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
 import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
@@ -46,16 +39,24 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
+type KakaoRoadview = {
+  setPanoId: (panoId: number, position: KakaoLatLng) => void;
+};
+type KakaoRoadviewClient = {
+  getNearestPanoId: (position: KakaoLatLng, radius: number, callback: (panoId: number | null) => void) => void;
+};
 
 declare global {
   interface Window {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+        Roadview: new (container: HTMLElement) => KakaoRoadview;
+        RoadviewClient: new () => KakaoRoadviewClient;
       };
     };
   }
@@ -65,8 +66,8 @@ interface KakaoPlaceItem {
   place_name: string;
   category_name: string;
   road_address_name: string;
-  x: string; // lng
-  y: string; // lat
+  x: string;
+  y: string;
   place_url: string;
 }
 
@@ -76,14 +77,17 @@ interface KakaoSearchResponse {
 
 interface RouletteOption {
   option: string;
+  style?: {
+    backgroundColor?: string;
+    textColor?: string;
+  };
 }
 
-// Google API 응답 타입을 더 상세하게 정의
+// Google API 응답 타입을 정의합니다.
 interface GoogleOpeningHours {
   open_now: boolean;
   weekday_text?: string[];
 }
-
 interface GoogleDetails {
   photos: string[];
   rating?: number;
@@ -102,12 +106,10 @@ const DISTANCES = [
   { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
 ];
 
-// 별점을 별 아이콘으로 표시하는 헬퍼 컴포넌트
 const StarRating = ({ rating }: { rating: number }) => {
   const fullStars = Math.floor(rating);
   const halfStar = rating % 1 >= 0.5;
   const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
-
   return (
     <div className="flex items-center">
       {[...Array(fullStars)].map((_, i) => (
@@ -122,66 +124,50 @@ const StarRating = ({ rating }: { rating: number }) => {
   );
 };
 
-// 영업시간을 파싱하여 오늘 정보만 보여주는 헬퍼 함수
 const getTodaysOpeningHours = (openingHours?: GoogleOpeningHours): string | null => {
-  if (!openingHours?.weekday_text) {
-    return null;
-  }
-  const today = new Date().getDay(); // 0=일, 1=월, ..., 6=토
-  // Google API 요일 순서(월~일)와 JS Date 요일 순서(일~토)를 맞춤
+  if (!openingHours?.weekday_text) return null;
+  const today = new Date().getDay();
   const googleApiIndex = (today + 6) % 7;
   const todaysHours = openingHours.weekday_text[googleApiIndex];
-  
   return todaysHours ? todaysHours.substring(todaysHours.indexOf(':') + 2) : "정보 없음";
 };
-
 
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
   const [googleDetails, setGoogleDetails] = useState<GoogleDetails | null>(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
-
   const [rouletteItems, setRouletteItems] = useState<KakaoPlaceItem[]>([]);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
-  
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [userLocation, setUserLocation] = useState<KakaoLatLng | null>(null);
-
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
-
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
   const markerInstance = useRef<KakaoMarker | null>(null);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
-  
   const [loading, setLoading] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
 
   useEffect(() => {
     const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAOMAP_JS_KEY;
     if (!KAKAO_JS_KEY) return;
-    
     const scriptId = 'kakao-maps-script';
     if (document.getElementById(scriptId)) {
-        if (window.kakao && window.kakao.maps) setIsMapReady(true);
-        return;
+      if (window.kakao && window.kakao.maps) setIsMapReady(true);
+      return;
     }
-
     const script = document.createElement('script');
     script.id = scriptId;
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
     script.async = true;
     document.head.appendChild(script);
-
     script.onload = () => {
-      window.kakao.maps.load(() => {
-        setIsMapReady(true);
-      });
+      window.kakao.maps.load(() => setIsMapReady(true));
     };
   }, []);
-  
+
   useEffect(() => {
     if (isMapReady && mapContainer.current && !mapInstance.current) {
       const mapOption = {
@@ -191,29 +177,23 @@ export default function Home() {
       mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
     }
   }, [isMapReady]);
-  
+
   useEffect(() => {
     if (!recommendation) return;
-
     const fetchGoogleDetails = async () => {
       setIsDetailsLoading(true);
       setGoogleDetails(null);
       try {
         const response = await fetch(`/api/details?name=${encodeURIComponent(recommendation.place_name)}&lat=${recommendation.y}&lng=${recommendation.x}`);
-        if (response.ok) {
-          const data: GoogleDetails = await response.json();
-          setGoogleDetails(data);
-        }
+        if (response.ok) setGoogleDetails(await response.json());
       } catch (error) {
         console.error("Failed to fetch Google details:", error);
       } finally {
         setIsDetailsLoading(false);
       }
     };
-
     fetchGoogleDetails();
   }, [recommendation]);
-
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -223,24 +203,16 @@ export default function Home() {
     const data: KakaoSearchResponse = await response.json();
     return data.documents || [];
   };
-  
+
   const handleCategoryChange = (category: string) => {
-    setSelectedCategories(prev =>
-      prev.includes(category)
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
-  };
-  
-  const handleSelectAll = (checked: boolean | 'indeterminate') => {
-    if (checked === true) {
-      setSelectedCategories(CATEGORIES);
-    } else {
-      setSelectedCategories([]);
-    }
+    setSelectedCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
   };
 
-  const recommendProcess = async (isRoulette: boolean) => {
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    setSelectedCategories(checked === true ? CATEGORIES : []);
+  };
+
+  const recommendProcess = (isRoulette: boolean) => {
     setLoading(true);
     setRecommendation(null);
     if (markerInstance.current) markerInstance.current.setMap(null);
@@ -250,9 +222,7 @@ export default function Home() {
       const { latitude, longitude } = position.coords;
       const currentLocation = new window.kakao.maps.LatLng(latitude, longitude);
       setUserLocation(currentLocation);
-      if (mapInstance.current) {
-        mapInstance.current.setCenter(currentLocation);
-      }
+      if (mapInstance.current) mapInstance.current.setCenter(currentLocation);
 
       try {
         const restaurants = await getNearbyRestaurants(latitude, longitude);
@@ -279,9 +249,9 @@ export default function Home() {
         setLoading(false);
       }
     }, (error) => {
-        console.error("Geolocation error:", error);
-        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
-        setLoading(false);
+      console.error("Geolocation error:", error);
+      alert("위치 정보를 가져오는 데 실패했습니다.");
+      setLoading(false);
     });
   };
 
@@ -296,10 +266,8 @@ export default function Home() {
     setRecommendation(place);
     if (mapInstance.current) {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      
       markerInstance.current = new window.kakao.maps.Marker({ position: placePosition });
       markerInstance.current.setMap(mapInstance.current);
-
       polylineInstance.current = new window.kakao.maps.Polyline({
         path: [currentLoc, placePosition],
         strokeWeight: 5,
@@ -309,20 +277,28 @@ export default function Home() {
       polylineInstance.current.setMap(mapInstance.current);
     }
   };
-
-  const rouletteData: RouletteOption[] = rouletteItems.map(item => ({ option: item.place_name }));
+  
+  // (수정!) 룰렛 데이터에 색상 정보 추가
+  const rouletteData: RouletteOption[] = rouletteItems.map((item, index) => {
+    const colors = ['#FF6B6B', '#FFD966', '#96F291', '#66D9E8', '#63A4FF'];
+    return { 
+      option: item.place_name,
+      style: {
+        backgroundColor: colors[index % colors.length],
+        textColor: '#333333'
+      }
+    };
+  });
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <Card className="w-full max-w-6xl p-6 md:p-8 space-y-6">
         <h1 className="text-3xl font-bold text-center">오늘 뭐 먹지? (카카오 ver.)</h1>
         
-        {/* (수정!) 고정 높이(md:h-[600px])를 제거하여 내용에 따라 높이가 유연하게 변경되도록 합니다. */}
         <div className="flex flex-col md:flex-row gap-6">
           <div className="w-full h-80 md:h-[600px] md:flex-grow rounded-lg overflow-hidden border shadow-sm">
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
-
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
             <div className="w-full max-w-sm flex gap-2">
               <Button onClick={() => recommendProcess(false)} disabled={loading || !isMapReady} size="lg" className="flex-1">
@@ -332,135 +308,84 @@ export default function Home() {
                 음식점 룰렛
               </Button>
               <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="lg">필터</Button>
-                </DialogTrigger>
+                <DialogTrigger asChild><Button variant="outline" size="lg">필터</Button></DialogTrigger>
                 <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>검색 필터 설정</DialogTitle>
-                  </DialogHeader>
-                  
+                  <DialogHeader><DialogTitle>검색 필터 설정</DialogTitle></DialogHeader>
                   <div className="py-4 space-y-4">
                     <div>
                       <Label className="text-lg font-semibold">음식 종류</Label>
                       <div className="grid grid-cols-2 gap-4 pt-2">
                         {CATEGORIES.map(category => (
                           <div key={category} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={category}
-                              checked={selectedCategories.includes(category)}
-                              onCheckedChange={() => handleCategoryChange(category)}
-                            />
+                            <Checkbox id={category} checked={selectedCategories.includes(category)} onCheckedChange={() => handleCategoryChange(category)} />
                             <Label htmlFor={category}>{category}</Label>
                           </div>
                         ))}
                       </div>
                       <div className="flex items-center space-x-2 mt-4 pt-4 border-t">
-                        <Checkbox
-                          id="select-all"
-                          checked={selectedCategories.length === CATEGORIES.length}
-                          onCheckedChange={(checked) => handleSelectAll(checked)}
-                        />
+                        <Checkbox id="select-all" checked={selectedCategories.length === CATEGORIES.length} onCheckedChange={(checked) => handleSelectAll(checked)} />
                         <Label htmlFor="select-all" className="font-semibold">모두 선택</Label>
                       </div>
                     </div>
-
                     <div className="border-t border-gray-200"></div>
-
                     <div>
                       <Label className="text-lg font-semibold">검색 반경</Label>
-                      <p className="text-sm text-gray-500">(선택하지 않으면 800m(도보 10분)으로 검색됩니다.)</p>
-                      <RadioGroup
-                        defaultValue="800"
-                        value={selectedDistance}
-                        onValueChange={setSelectedDistance}
-                        className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2"
-                      >
+                      <p className="text-sm text-gray-500">(기본값: 800m)</p>
+                      <RadioGroup defaultValue="800" value={selectedDistance} onValueChange={setSelectedDistance} className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
                         {DISTANCES.map(dist => (
                           <div key={dist.value} className="flex items-center space-x-2">
                             <RadioGroupItem value={dist.value} id={dist.value} />
                             <Label htmlFor={dist.value} className="cursor-pointer">
-                              <div className="flex flex-col">
-                                <span className="font-semibold">{dist.label}</span>
-                                <span className="text-xs text-gray-500">{`(${dist.value}m ${dist.walkTime})`}</span>
-                              </div>
+                              <div className="flex flex-col"><span className="font-semibold">{dist.label}</span><span className="text-xs text-gray-500">{`(${dist.value}m ${dist.walkTime})`}</span></div>
                             </Label>
                           </div>
                         ))}
                       </RadioGroup>
                     </div>
                   </div>
-
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button>완료</Button>
-                    </DialogClose>
-                  </DialogFooter>
+                  <DialogFooter><DialogClose asChild><Button>완료</Button></DialogClose></DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {/* (수정!) 첫 번째 카드 표시 로직 */}
               <Card className="w-full border shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xl h-8">
-                    {recommendation ? recommendation.place_name : "추천 음식점"}
-                  </CardTitle>
+                  <CardTitle className="text-xl h-8">{recommendation ? recommendation.place_name : "추천 음식점"}</CardTitle>
                 </CardHeader>
-                <CardContent className="pt-2 text-sm text-gray-700 space-y-1 h-16">
+                <CardContent className="pt-2 text-sm text-gray-700 space-y-1 min-h-[72px]">
                   {recommendation ? (
                     <>
                       <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                       <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                     </>
-                  ) : (
-                    <p>음식점을 추천받아보세요!</p>
-                  )}
+                  ) : <p>음식점을 추천받아보세요!</p>}
                 </CardContent>
                 <CardFooter className="pt-2">
                   <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
-                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">
-                      카카오맵에서 상세보기
-                    </a>
+                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">카카오맵에서 상세보기</a>
                   </Button>
                 </CardFooter>
               </Card>
-
-              {/* (수정!) 두 번째 카드 표시 로직 */}
               <Card className="w-full border shadow-sm min-h-[200px]">
                 <CardHeader>
-                  <CardTitle className="text-lg">
-                    {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
-                  </CardTitle>
+                  <CardTitle className="text-lg">{recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm space-y-3">
                   {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
                   {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
-                  
                   {googleDetails?.rating && (
-                    <div className="flex items-center gap-2">
-                      <strong>별점:</strong> <StarRating rating={googleDetails.rating} />
-                    </div>
+                    <div className="flex items-center gap-2"><strong>별점:</strong> <StarRating rating={googleDetails.rating} /></div>
                   )}
-
                   {googleDetails?.opening_hours && (
                     <div className="flex flex-col">
-                      <p><strong>영업:</strong> 
-                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
-                        </span>
-                      </p>
-                      <p className="text-xs text-gray-500 ml-1">
-                        (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
-                      </p>
+                      <p><strong>영업:</strong> <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}</span></p>
+                      <p className="text-xs text-gray-500 ml-1">(오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})</p>
                     </div>
                   )}
-
                   {googleDetails?.phone && (
                     <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
                   )}
-
                   {googleDetails?.photos && googleDetails.photos.length > 0 && (
                     <div>
                       <strong>사진:</strong>
@@ -469,11 +394,7 @@ export default function Home() {
                           {googleDetails.photos.map((photoUrl, index) => (
                             <CarouselItem key={index}>
                               <Dialog>
-                                <DialogTrigger asChild>
-                                  <button className="w-full focus:outline-none">
-                                    <img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" />
-                                  </button>
-                                </DialogTrigger>
+                                <DialogTrigger asChild><button className="w-full focus:outline-none"><img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
                                 <DialogContent className="max-w-3xl h-[80vh] p-2">
                                   <img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="w-full h-full object-contain" />
                                 </DialogContent>
@@ -495,9 +416,7 @@ export default function Home() {
       
       <Dialog open={isRouletteOpen} onOpenChange={setIsRouletteOpen}>
         <DialogContent className="max-w-md p-6">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl mb-4">룰렛을 돌려 오늘 점심을 선택하세요!</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-center text-2xl mb-4">룰렛을 돌려 오늘 점심을 선택하세요!</DialogTitle></DialogHeader>
           <div className="flex flex-col justify-center items-center space-y-6">
             {rouletteData.length > 0 && (
               <Wheel
@@ -506,10 +425,13 @@ export default function Home() {
                 data={rouletteData}
                 onStopSpinning={() => {
                   setMustSpin(false);
-                  setIsRouletteOpen(false);
-                  if(userLocation) {
-                    updateMapAndCard(rouletteItems[prizeNumber], userLocation);
-                  }
+                  // (수정!) 룰렛이 멈춘 후 2초 뒤에 팝업이 닫히도록 설정
+                  setTimeout(() => {
+                    setIsRouletteOpen(false);
+                    if(userLocation) {
+                      updateMapAndCard(rouletteItems[prizeNumber], userLocation);
+                    }
+                  }, 2000); // 2초 지연
                 }}
               />
             )}
