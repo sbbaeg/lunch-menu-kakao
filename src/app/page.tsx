@@ -21,7 +21,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-// (수정!) Carousel 컴포넌트들을 import 합니다.
 import {
   Carousel,
   CarouselContent,
@@ -30,7 +29,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import dynamic from 'next/dynamic';
-import Image from 'next/image'; // (추가!) Next.js 이미지 컴포넌트 import
+import Image from 'next/image';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
@@ -367,9 +366,14 @@ export default function Home() {
                       카카오맵
                     </a>
                   </Button>
+                  {/* (수정!) 가게 이름과 주소를 함께 검색하여 정확도를 높입니다. */}
                   <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
-                    <a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(recommendation?.place_name || "")}`} target="_blank" rel="noopener noreferrer">
-                      네이버
+                    <a 
+                      href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation?.place_name} ${recommendation?.road_address_name}`)}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                    >
+                      네이버 검색
                     </a>
                   </Button>
                 </CardFooter>
@@ -416,12 +420,8 @@ export default function Home() {
                           {googleDetails.photos.map((photoUrl, index) => (
                             <CarouselItem key={index}>
                               <Dialog>
-                                <DialogTrigger asChild><button className="w-full focus:outline-none">
-                                  {/* (수정!) <img>를 Next.js의 <Image>로 교체 */}
-                                  <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" />
-                                </button></DialogTrigger>
+                                <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
                                 <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                  {/* (수정!) <img>를 Next.js의 <Image>로 교체 */}
                                   <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
                                 </DialogContent>
                               </Dialog>
