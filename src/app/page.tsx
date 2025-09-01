@@ -40,6 +40,7 @@ type KakaoMap = {
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
+  setImage: (image: KakaoMarkerImage) => void;
 };
 type KakaoPolyline = {
   setMap: (map: KakaoMap | null) => void;
@@ -48,6 +49,9 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
+type KakaoSize = {};
+type KakaoPoint = {};
+type KakaoMarkerImage = {};
 
 declare global {
   interface Window {
@@ -56,8 +60,11 @@ declare global {
         load: (callback: () => void) => void;
         Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
+        Marker: new (options: { position: KakaoLatLng; image?: KakaoMarkerImage; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
+        Size: new (width: number, height: number) => KakaoSize;
+        Point: new (x: number, y: number) => KakaoPoint;
+        MarkerImage: new (src: string, size: KakaoSize, options?: { offset: KakaoPoint; }) => KakaoMarkerImage;
       };
     };
   }
@@ -95,6 +102,11 @@ interface GoogleDetails {
   rating?: number;
   opening_hours?: GoogleOpeningHours;
   phone?: string;
+}
+
+interface DirectionPoint {
+  lat: number;
+  lng: number;
 }
 
 const CATEGORIES = [
@@ -152,7 +164,7 @@ export default function Home() {
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
-  const markers = useRef<KakaoMarker[]>([]);
+  const markers = useRef<{ id: string; marker: KakaoMarker }[]>([]);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
   
   const [loading, setLoading] = useState(false);
@@ -203,7 +215,6 @@ export default function Home() {
     fetchGoogleDetails();
   }, [recommendation]);
 
-  // (추가!) '랜덤 추천'으로 돌아올 때 검색 개수를 초기화하는 로직
   useEffect(() => {
     if (sortOrder === 'accuracy') {
       setResultCount(5);
@@ -291,50 +302,63 @@ export default function Home() {
     setRecommendation(null);
     setGoogleDetails(null);
     setRestaurantList([]);
-    markers.current.forEach(marker => marker.setMap(null));
+    markers.current.forEach(item => item.marker.setMap(null));
     markers.current = [];
     if (polylineInstance.current) polylineInstance.current.setMap(null);
   };
 
-  const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
+  const updateMapAndCard = async (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
     if(sortOrder === 'accuracy') {
         setRestaurantList([]);
     }
     setRecommendation(place);
 
     if (mapInstance.current) {
-      if(sortOrder === 'accuracy') {
-        markers.current.forEach(marker => marker.setMap(null));
-        markers.current = [];
-      }
+      const imageSize = new window.kakao.maps.Size(24, 35);
+      const blueMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
+      const redMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png', imageSize);
+
+      markers.current.forEach(item => {
+        item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
+      });
+
       if (polylineInstance.current) polylineInstance.current.setMap(null);
 
-      const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      
-      if(sortOrder === 'accuracy') {
-        const marker = new window.kakao.maps.Marker({ position: placePosition });
-        marker.setMap(mapInstance.current);
-        markers.current.push(marker);
+      try {
+        const response = await fetch(`/api/directions?origin=${currentLoc.getLng()},${currentLoc.getLat()}&destination=${place.x},${place.y}`);
+        const data = await response.json();
+        
+        if (data.path && data.path.length > 0) {
+          const linePath = data.path.map((point: DirectionPoint) => new window.kakao.maps.LatLng(point.lat, point.lng));
+          polylineInstance.current = new window.kakao.maps.Polyline({
+            path: linePath,
+            strokeWeight: 6,
+            strokeColor: '#FF0000',
+            strokeOpacity: 0.8,
+          });
+          polylineInstance.current.setMap(mapInstance.current);
+        }
+      } catch (error) {
+        console.error("Failed to fetch directions:", error);
       }
-
-      polylineInstance.current = new window.kakao.maps.Polyline({
-        path: [currentLoc, placePosition],
-        strokeWeight: 5,
-        strokeColor: '#007BFF',
-        strokeOpacity: 0.8,
-      });
-      polylineInstance.current.setMap(mapInstance.current);
     }
   };
   
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
     setRecommendation(null);
+    
+    const imageSize = new window.kakao.maps.Size(24, 35);
+    const markerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
+
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      const marker = new window.kakao.maps.Marker({ position: placePosition });
+      const marker = new window.kakao.maps.Marker({
+        position: placePosition,
+        image: markerImage
+      });
       marker.setMap(mapInstance.current);
-      markers.current.push(marker);
+      markers.current.push({ id: place.id, marker });
     });
     if (places.length > 0) {
       updateMapAndCard(places[0], currentLoc);
