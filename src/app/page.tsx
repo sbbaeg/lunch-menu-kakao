@@ -93,7 +93,6 @@ interface GoogleOpeningHours {
 interface GoogleDetails {
   photos: string[];
   rating?: number;
-  // (수정!) GoogleOpeninghours -> GoogleOpeningHours (대문자 H)
   opening_hours?: GoogleOpeningHours;
   phone?: string;
 }
@@ -149,7 +148,7 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
   const [sortOrder, setSortOrder] = useState<'accuracy' | 'distance'>('accuracy');
-  const [resultCount, setResultCount] = useState<number>(5);
+  const [resultCount, setResultCount] = useState<number>(10);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -207,8 +206,8 @@ export default function Home() {
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
-    const sort = sortOrder === 'distance' ? 'distance' : 'accuracy';
-    const size = sortOrder === 'distance' ? resultCount : 15;
+    const sort = sortOrder;
+    const size = resultCount;
     
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}&sort=${sort}&size=${size}`);
     if (!response.ok) throw new Error('API call failed');
@@ -243,7 +242,7 @@ export default function Home() {
         }
 
         if (isRoulette) {
-          const rouletteCandidates = restaurants.length >= resultCount ? restaurants.slice(0, resultCount) : restaurants;
+          const rouletteCandidates = restaurants.slice(0, resultCount);
           if (rouletteCandidates.length < 2) {
             alert('주변에 추첨할 음식점이 2개 미만입니다.');
             setLoading(false);
@@ -255,7 +254,7 @@ export default function Home() {
         } else {
           if (sortOrder === 'distance') {
             setRestaurantList(restaurants);
-            displayMarkers(restaurants);
+            displayMarkers(restaurants, currentLocation);
           } else {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
             updateMapAndCard(restaurants[randomIndex], currentLocation);
@@ -283,6 +282,7 @@ export default function Home() {
   
   const clearMapAndResults = () => {
     setRecommendation(null);
+    setGoogleDetails(null);
     setRestaurantList([]);
     markers.current.forEach(marker => marker.setMap(null));
     markers.current = [];
@@ -290,14 +290,28 @@ export default function Home() {
   };
 
   const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
-    clearMapAndResults();
+    // (수정!) 랜덤 추천 시에는 목록을 확실히 비워줍니다.
+    if(sortOrder === 'accuracy') {
+        setRestaurantList([]);
+    }
     setRecommendation(place);
+
     if (mapInstance.current) {
+      // '가까운 순' 목록에서는 여러 마커를 유지해야 하므로, 여기서는 마커를 지우지 않습니다.
+      if(sortOrder === 'accuracy') {
+        markers.current.forEach(marker => marker.setMap(null));
+        markers.current = [];
+      }
+      if (polylineInstance.current) polylineInstance.current.setMap(null);
+
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       
-      const marker = new window.kakao.maps.Marker({ position: placePosition });
-      marker.setMap(mapInstance.current);
-      markers.current.push(marker);
+      // '랜덤 추천' 시에만 새로운 마커를 추가합니다.
+      if(sortOrder === 'accuracy') {
+        const marker = new window.kakao.maps.Marker({ position: placePosition });
+        marker.setMap(mapInstance.current);
+        markers.current.push(marker);
+      }
 
       polylineInstance.current = new window.kakao.maps.Polyline({
         path: [currentLoc, placePosition],
@@ -309,16 +323,19 @@ export default function Home() {
     }
   };
   
-  const displayMarkers = (places: KakaoPlaceItem[]) => {
-    if (!mapInstance.current || !userLocation) return;
+  const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
+    if (!mapInstance.current) return;
+    // (수정!) 목록을 표시할 때는 단일 추천 상태를 null로 설정합니다.
+    setRecommendation(null);
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       const marker = new window.kakao.maps.Marker({ position: placePosition });
       marker.setMap(mapInstance.current);
       markers.current.push(marker);
     });
+    // (수정!) 목록의 첫 번째 항목을 '선택된 항목'으로 지정합니다.
     if (places.length > 0) {
-      updateMapAndCard(places[0], userLocation);
+      setRecommendation(places[0]);
     }
   };
 
@@ -332,6 +349,14 @@ export default function Home() {
       }
     };
   });
+  
+  // (수정!) 클릭 핸들러를 별도로 분리합니다.
+  const handleListItemClick = (place: KakaoPlaceItem) => {
+    if (userLocation) {
+        mapInstance.current?.setCenter(new window.kakao.maps.LatLng(Number(place.y), Number(place.x)));
+        updateMapAndCard(place, userLocation);
+    }
+  };
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -397,7 +422,7 @@ export default function Home() {
                         <div className="border-t border-gray-200"></div>
                         <div>
                           <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
-                          <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                          <Slider id="result-count" defaultValue={[10]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
                         </div>
                       </>
                     )}
@@ -409,18 +434,18 @@ export default function Home() {
             
             <div className="w-full max-w-sm space-y-4">
               {sortOrder === 'distance' && restaurantList.length > 0 ? (
-                <div className="space-y-2 max-h-[480px] overflow-y-auto">
+                <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
                   {restaurantList.map(place => (
                     <Card 
                       key={place.id} 
                       className={`w-full border shadow-sm cursor-pointer hover:border-blue-500 transition-all ${recommendation?.id === place.id ? 'border-blue-500 border-2' : ''}`}
-                      onClick={() => userLocation && updateMapAndCard(place, userLocation)}
+                      onClick={() => handleListItemClick(place)}
                     >
-                      <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg">{place.place_name}</CardTitle>
-                        <span className="text-sm text-gray-600">{place.distance}m</span>
+                      <CardHeader className="p-3 flex flex-row items-center justify-between">
+                        <CardTitle className="text-md">{place.place_name}</CardTitle>
+                        <span className="text-xs text-gray-600 whitespace-nowrap">{place.distance}m</span>
                       </CardHeader>
-                      <CardContent className="pt-0 text-sm text-gray-700">
+                      <CardContent className="p-3 pt-0 text-xs text-gray-700">
                         <p>{place.category_name}</p>
                       </CardContent>
                     </Card>
