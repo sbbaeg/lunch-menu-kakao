@@ -40,7 +40,6 @@ type KakaoMap = {
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
-  setImage: (image: KakaoMarkerImage) => void;
 };
 type KakaoPolyline = {
   setMap: (map: KakaoMap | null) => void;
@@ -49,15 +48,6 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
-type KakaoSize = {
-  width: number;
-  height: number;
-};
-type KakaoPoint = {
-  x: number;
-  y: number;
-};
-type KakaoMarkerImage = object;
 
 declare global {
   interface Window {
@@ -66,11 +56,8 @@ declare global {
         load: (callback: () => void) => void;
         Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
-        Marker: new (options: { position: KakaoLatLng; image?: KakaoMarkerImage; }) => KakaoMarker;
+        Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
-        Size: new (width: number, height: number) => KakaoSize;
-        Point: new (x: number, y: number) => KakaoPoint;
-        MarkerImage: new (src: string, size: KakaoSize, options?: { offset: KakaoPoint; }) => KakaoMarkerImage;
       };
     };
   }
@@ -171,7 +158,7 @@ export default function Home() {
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
-  const markers = useRef<{ id: string; marker: KakaoMarker }[]>([]);
+  const markers = useRef<KakaoMarker[]>([]);
   const polylineInstance = useRef<KakaoPolyline | null>(null);
   
   const [loading, setLoading] = useState(false);
@@ -221,6 +208,12 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
+
+  useEffect(() => {
+    if (sortOrder === 'accuracy') {
+      setResultCount(5);
+    }
+  }, [sortOrder]);
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -302,7 +295,7 @@ export default function Home() {
     setRecommendation(null);
     setGoogleDetails(null);
     setRestaurantList([]);
-    markers.current.forEach(item => item.marker.setMap(null));
+    markers.current.forEach(marker => marker.setMap(null));
     markers.current = [];
     if (polylineInstance.current) polylineInstance.current.setMap(null);
   };
@@ -311,14 +304,6 @@ export default function Home() {
     setRecommendation(place);
 
     if (mapInstance.current) {
-      const imageSize = new window.kakao.maps.Size(24, 35);
-      const blueMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
-      const redMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png', imageSize);
-      
-      markers.current.forEach(item => {
-        item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
-      });
-
       if (polylineInstance.current) polylineInstance.current.setMap(null);
       
       try {
@@ -330,7 +315,7 @@ export default function Home() {
           polylineInstance.current = new window.kakao.maps.Polyline({
             path: linePath,
             strokeWeight: 6,
-            strokeColor: '#FF0000',
+            strokeColor: '#007BFF',
             strokeOpacity: 0.8,
           });
           polylineInstance.current.setMap(mapInstance.current);
@@ -343,18 +328,12 @@ export default function Home() {
   
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
-    
-    const imageSize = new window.kakao.maps.Size(24, 35);
-    const markerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
 
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-      const marker = new window.kakao.maps.Marker({
-        position: placePosition,
-        image: markerImage
-      });
+      const marker = new window.kakao.maps.Marker({ position: placePosition });
       marker.setMap(mapInstance.current);
-      markers.current.push({ id: place.id, marker });
+      markers.current.push(marker);
     });
     if (places.length > 0) {
       updateMapAndCard(places[0], currentLoc);
@@ -378,14 +357,6 @@ export default function Home() {
         updateMapAndCard(place, userLocation);
     }
   };
-  
-  const googleMapsUrl = userLocation && recommendation ? 
-    `https://www.google.com/maps/dir/?api=1&origin=${userLocation.getLat()},${userLocation.getLng()}&destination=${recommendation.y},${recommendation.x}&travelmode=walking` 
-    : '#';
-    
-  const naverMapUrl = userLocation && recommendation ?
-    `https://m.map.naver.com/directions/walk.naver?start=${userLocation.getLng()},${userLocation.getLat()},현재%20위치&destination=${recommendation.x},${recommendation.y},${encodeURIComponent(recommendation.place_name)}`
-    : '#';
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -525,10 +496,6 @@ export default function Home() {
                       </div>
                     )}
                   </CardContent>
-                  <CardFooter className="pt-3 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" disabled={!userLocation}><a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">Google 길 안내</a></Button>
-                    <Button asChild className="w-full" variant="secondary" disabled={!userLocation}><a href={naverMapUrl} target="_blank" rel="noopener noreferrer">네이버 길 안내</a></Button>
-                  </CardFooter>
                 </Card>
               )}
             </div>
