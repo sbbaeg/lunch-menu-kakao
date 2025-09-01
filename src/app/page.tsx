@@ -37,6 +37,7 @@ const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Whee
 // 타입 정의
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
+  relayout: () => void;
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
@@ -208,6 +209,14 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
+
+  useEffect(() => {
+    if (!isDetailsLoading && mapInstance.current) {
+      setTimeout(() => {
+        mapInstance.current?.relayout();
+      }, 100);
+    }
+  }, [googleDetails, isDetailsLoading]);
 
   useEffect(() => {
     if (sortOrder === 'accuracy') {
