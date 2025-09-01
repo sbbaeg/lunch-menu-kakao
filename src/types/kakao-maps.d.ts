@@ -19,5 +19,7 @@ declare namespace kakao.maps {
 }
 
 interface Window {
-    kakao: any; // 타입 에러를 피하기 위해 임시로 any를 사용합니다.
+    kakao: {
+        maps: typeof kakao.maps;
+    };
 }
