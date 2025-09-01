@@ -64,7 +64,7 @@ declare global {
 }
 
 interface KakaoPlaceItem {
-  id: string; // id 추가
+  id: string;
   place_name: string;
   category_name: string;
   road_address_name: string;
@@ -80,6 +80,10 @@ interface KakaoSearchResponse {
 
 interface RouletteOption {
   option: string;
+  style?: {
+    backgroundColor?: string;
+    textColor?: string;
+  };
 }
 
 interface GoogleOpeningHours {
@@ -89,7 +93,7 @@ interface GoogleOpeningHours {
 interface GoogleDetails {
   photos: string[];
   rating?: number;
-  opening_hours?: GoogleOpeningHours;
+  opening_hours?: GoogleOpeninghours;
   phone?: string;
 }
 
@@ -203,7 +207,7 @@ export default function Home() {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
     const sort = sortOrder === 'distance' ? 'distance' : 'accuracy';
-    const size = resultCount;
+    const size = sortOrder === 'distance' ? resultCount : 15; // 랜덤 추천 시에는 충분히 많이 가져옴
     
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}&sort=${sort}&size=${size}`);
     if (!response.ok) throw new Error('API call failed');
@@ -238,14 +242,20 @@ export default function Home() {
         }
 
         if (isRoulette) {
-          const rouletteCandidates = restaurants.length >= 5 ? restaurants.slice(0, 5) : restaurants;
+          // (수정!) 룰렛 개수를 resultCount에 맞춤
+          const rouletteCandidates = restaurants.length >= resultCount ? restaurants.slice(0, resultCount) : restaurants;
+          if (rouletteCandidates.length < 2) {
+            alert('주변에 추첨할 음식점이 2개 미만입니다.');
+            setLoading(false);
+            return;
+          }
           setRouletteItems(rouletteCandidates);
           setIsRouletteOpen(true);
           setMustSpin(false);
         } else {
           if (sortOrder === 'distance') {
             setRestaurantList(restaurants);
-            displayMarkers(restaurants, currentLocation);
+            displayMarkers(restaurants);
           } else {
             const randomIndex = Math.floor(Math.random() * restaurants.length);
             updateMapAndCard(restaurants[randomIndex], currentLocation);
@@ -299,21 +309,29 @@ export default function Home() {
     }
   };
   
-  const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
-    if (!mapInstance.current) return;
+  const displayMarkers = (places: KakaoPlaceItem[]) => {
+    if (!mapInstance.current || !userLocation) return;
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       const marker = new window.kakao.maps.Marker({ position: placePosition });
       marker.setMap(mapInstance.current);
       markers.current.push(marker);
     });
-    // (수정!) 첫 번째 항목을 기본 선택으로 설정
     if (places.length > 0) {
-      setRecommendation(places[0]);
+      updateMapAndCard(places[0], userLocation);
     }
   };
 
-  const rouletteData: RouletteOption[] = rouletteItems.map((item) => ({ option: item.place_name }));
+  const rouletteData: RouletteOption[] = rouletteItems.map((item, index) => {
+    const colors = ['#FF6B6B', '#FFD966', '#96F291', '#66D9E8', '#63A4FF', '#f9a8d4', '#d9a8f9', '#f3a683', '#a29bfe', '#e17055', '#00b894', '#74b9ff', '#ff7675', '#fdcb6e', '#55efc4'];
+    return { 
+      option: item.place_name,
+      style: {
+        backgroundColor: colors[index % colors.length],
+        textColor: '#333333'
+      }
+    };
+  });
 
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
@@ -337,6 +355,7 @@ export default function Home() {
                 <DialogContent>
                   <DialogHeader><DialogTitle>검색 필터 설정</DialogTitle></DialogHeader>
                   <div className="py-4 space-y-4">
+                    {/* ... (음식 종류, 검색 반경 필터는 동일) ... */}
                     <div>
                       <Label className="text-lg font-semibold">음식 종류</Label>
                       <div className="grid grid-cols-2 gap-4 pt-2">
@@ -374,11 +393,16 @@ export default function Home() {
                         <div className="flex items-center space-x-2"><RadioGroupItem value="distance" id="sort-distance" /><Label htmlFor="sort-distance">가까운 순</Label></div>
                       </RadioGroup>
                     </div>
-                    <div className="border-t border-gray-200"></div>
-                    <div>
-                      <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
-                      <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
-                    </div>
+                    {/* (수정!) '가까운 순'일 때만 슬라이더 표시 */}
+                    {sortOrder === 'distance' && (
+                      <>
+                        <div className="border-t border-gray-200"></div>
+                        <div>
+                          <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
+                          <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                        </div>
+                      </>
+                    )}
                   </div>
                   <DialogFooter><DialogClose asChild><Button>완료</Button></DialogClose></DialogFooter>
                 </DialogContent>
@@ -386,13 +410,12 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {/* (수정!) '가까운 순' 목록 표시 로직 */}
               {sortOrder === 'distance' && restaurantList.length > 0 ? (
                 <div className="space-y-2 max-h-[480px] overflow-y-auto">
                   {restaurantList.map(place => (
                     <Card 
                       key={place.id} 
-                      className="w-full border shadow-sm cursor-pointer hover:border-blue-500"
+                      className="w-full border shadow-sm cursor-pointer hover:border-blue-500 transition-all"
                       onClick={() => userLocation && updateMapAndCard(place, userLocation)}
                     >
                       <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -423,7 +446,6 @@ export default function Home() {
                 </Card>
               )}
               
-              {/* Google 상세 정보 카드 */}
               {recommendation && (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
