@@ -525,8 +525,20 @@ export default function Home() {
                   setMustSpin(false);
                   setTimeout(() => {
                     setIsRouletteOpen(false);
-                    if(userLocation) {
-                      updateMapAndCard(rouletteItems[prizeNumber], userLocation);
+                    if (userLocation) {
+                      const winner = rouletteItems[prizeNumber];
+                      
+                      // 룰렛 결과로 나온 음식점의 마커를 생성하고 지도에 표시합니다.
+                      const placePosition = new window.kakao.maps.LatLng(Number(winner.y), Number(winner.x));
+                      const marker = new window.kakao.maps.Marker({ position: placePosition });
+                      marker.setMap(mapInstance.current);
+                      markers.current.push(marker);
+
+                      // 기존의 카드 업데이트 및 경로 표시 함수를 호출합니다.
+                      updateMapAndCard(winner, userLocation);
+
+                      // 룰렛 결과를 좌측 리스트에도 표시하여 일관성을 높입니다.
+                      setRestaurantList([winner]);
                     }
                   }, 2000);
                 }}
