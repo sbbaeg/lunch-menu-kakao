@@ -93,7 +93,8 @@ interface GoogleOpeningHours {
 interface GoogleDetails {
   photos: string[];
   rating?: number;
-  opening_hours?: GoogleOpeninghours;
+  // (수정!) GoogleOpeninghours -> GoogleOpeningHours (대문자 H)
+  opening_hours?: GoogleOpeningHours;
   phone?: string;
 }
 
@@ -207,7 +208,7 @@ export default function Home() {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
     const sort = sortOrder === 'distance' ? 'distance' : 'accuracy';
-    const size = sortOrder === 'distance' ? resultCount : 15; // 랜덤 추천 시에는 충분히 많이 가져옴
+    const size = sortOrder === 'distance' ? resultCount : 15;
     
     const response = await fetch(`/api/recommend?lat=${latitude}&lng=${longitude}&query=${encodeURIComponent(query)}&radius=${radius}&sort=${sort}&size=${size}`);
     if (!response.ok) throw new Error('API call failed');
@@ -242,7 +243,6 @@ export default function Home() {
         }
 
         if (isRoulette) {
-          // (수정!) 룰렛 개수를 resultCount에 맞춤
           const rouletteCandidates = restaurants.length >= resultCount ? restaurants.slice(0, resultCount) : restaurants;
           if (rouletteCandidates.length < 2) {
             alert('주변에 추첨할 음식점이 2개 미만입니다.');
@@ -355,7 +355,6 @@ export default function Home() {
                 <DialogContent>
                   <DialogHeader><DialogTitle>검색 필터 설정</DialogTitle></DialogHeader>
                   <div className="py-4 space-y-4">
-                    {/* ... (음식 종류, 검색 반경 필터는 동일) ... */}
                     <div>
                       <Label className="text-lg font-semibold">음식 종류</Label>
                       <div className="grid grid-cols-2 gap-4 pt-2">
@@ -393,7 +392,6 @@ export default function Home() {
                         <div className="flex items-center space-x-2"><RadioGroupItem value="distance" id="sort-distance" /><Label htmlFor="sort-distance">가까운 순</Label></div>
                       </RadioGroup>
                     </div>
-                    {/* (수정!) '가까운 순'일 때만 슬라이더 표시 */}
                     {sortOrder === 'distance' && (
                       <>
                         <div className="border-t border-gray-200"></div>
@@ -415,7 +413,7 @@ export default function Home() {
                   {restaurantList.map(place => (
                     <Card 
                       key={place.id} 
-                      className="w-full border shadow-sm cursor-pointer hover:border-blue-500 transition-all"
+                      className={`w-full border shadow-sm cursor-pointer hover:border-blue-500 transition-all ${recommendation?.id === place.id ? 'border-blue-500 border-2' : ''}`}
                       onClick={() => userLocation && updateMapAndCard(place, userLocation)}
                     >
                       <CardHeader className="pb-2 flex flex-row items-center justify-between">
