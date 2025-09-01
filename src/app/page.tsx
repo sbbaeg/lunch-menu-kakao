@@ -34,7 +34,7 @@ import Image from 'next/image';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
-// 타입 정의
+// (수정!) 빈 객체 {} 타입을 실제 속성을 가진 타입으로 정의합니다.
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
 };
@@ -49,9 +49,15 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
-type KakaoSize = {};
-type KakaoPoint = {};
-type KakaoMarkerImage = {};
+type KakaoSize = {
+  width: number;
+  height: number;
+};
+type KakaoPoint = {
+  x: number;
+  y: number;
+};
+type KakaoMarkerImage = object; // MarkerImage는 반환 객체이므로 object로 충분합니다.
 
 declare global {
   interface Window {
@@ -383,6 +389,14 @@ export default function Home() {
     }
   };
 
+  const googleMapsUrl = userLocation && recommendation ? 
+    `https://www.google.com/maps/dir/?api=1&origin=${userLocation.getLat()},${userLocation.getLng()}&destination=${recommendation.y},${recommendation.x}&travelmode=walking` 
+    : '#';
+    
+  const naverMapUrl = userLocation && recommendation ?
+    `https://m.map.naver.com/directions/walk.naver?start=${userLocation.getLng()},${userLocation.getLat()},현재%20위치&destination=${recommendation.x},${recommendation.y},${encodeURIComponent(recommendation.place_name)}`
+    : '#';
+
   return (
     <main className="flex flex-col items-center w-full min-h-screen p-4 md:p-8 bg-gray-50">
       <Card className="w-full max-w-6xl p-6 md:p-8 space-y-6">
@@ -536,6 +550,18 @@ export default function Home() {
                       </div>
                     )}
                   </CardContent>
+                  <CardFooter className="pt-3 grid grid-cols-2 gap-2">
+                    <Button asChild className="w-full" disabled={!userLocation}>
+                      <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">
+                        Google 길 안내
+                      </a>
+                    </Button>
+                    <Button asChild className="w-full" variant="secondary" disabled={!userLocation}>
+                      <a href={naverMapUrl} target="_blank" rel="noopener noreferrer">
+                        네이버 길 안내
+                      </a>
+                    </Button>
+                  </CardFooter>
                 </Card>
               )}
             </div>
