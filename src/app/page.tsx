@@ -65,9 +65,17 @@ interface RouletteOption {
   option: string;
 }
 
-// (추가!) Google API 응답 타입
+// Google API 응답 타입을 더 상세하게 정의
+interface GoogleReview {
+  rating: number;
+}
+
 interface GoogleDetails {
   photos: string[];
+  rating?: number;
+  opening_hours?: { open_now: boolean };
+  reviews?: GoogleReview[];
+  phone?: string;
 }
 
 const CATEGORIES = [
@@ -81,9 +89,29 @@ const DISTANCES = [
   { value: '2000', label: '조금 멀어요', walkTime: '약 25분' },
 ];
 
+// 별점을 별 아이콘으로 표시하는 헬퍼 컴포넌트
+const StarRating = ({ rating }: { rating: number }) => {
+  const fullStars = Math.floor(rating);
+  const halfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+
+  return (
+    <div className="flex items-center">
+      {[...Array(fullStars)].map((_, i) => (
+        <span key={`full-${i}`} className="text-yellow-400">★</span>
+      ))}
+      {halfStar && <span className="text-yellow-400">☆</span>}
+      {[...Array(emptyStars)].map((_, i) => (
+        <span key={`empty-${i}`} className="text-gray-300">☆</span>
+      ))}
+      <span className="ml-2 text-sm font-bold">{rating.toFixed(1)}</span>
+    </div>
+  );
+};
+
+
 export default function Home() {
   const [recommendation, setRecommendation] = useState<KakaoPlaceItem | null>(null);
-  // (추가!) Google 상세 정보를 저장할 상태
   const [googleDetails, setGoogleDetails] = useState<GoogleDetails | null>(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
@@ -137,8 +165,8 @@ export default function Home() {
       mapInstance.current = new window.kakao.maps.Map(mapContainer.current, mapOption);
     }
   }, [isMapReady]);
-
-  // (추가!) 추천 가게가 정해지면 Google 상세 정보 가져오기
+  
+  // 추천 가게가 정해지면 Google 상세 정보 가져오기
   useEffect(() => {
     if (!recommendation) return;
 
@@ -227,7 +255,7 @@ export default function Home() {
       }
     }, (error) => {
         console.error("Geolocation error:", error);
-        alert("위치 정보를 가져오는 데 실패했습니다.");
+        alert("위치 정보를 가져오는 데 실패했습니다. 위치 권한을 허용했는지 확인해주세요.");
         setLoading(false);
     });
   };
@@ -346,7 +374,6 @@ export default function Home() {
               </Dialog>
             </div>
             
-            {/* (수정!) 두 개의 카드를 div로 감싸줍니다. */}
             <div className="w-full max-w-sm space-y-4">
               {recommendation && (
                 <Card className="w-full border shadow-sm">
@@ -367,22 +394,54 @@ export default function Home() {
                 </Card>
               )}
 
-              {/* (추가!) Google 상세 정보 카드 */}
               {recommendation && (
                 <Card className="w-full border shadow-sm">
                   <CardHeader>
-                    <CardTitle className="text-lg">가게 사진 (Google)</CardTitle>
+                    <CardTitle className="text-lg">상세 정보 (Google)</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    {isDetailsLoading && <p>사진을 불러오는 중...</p>}
-                    {googleDetails?.photos && (
-                      <div className="grid grid-cols-3 gap-2">
-                        {googleDetails.photos.map((photoUrl, index) => (
-                          <img key={index} src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="rounded-md object-cover aspect-square" />
-                        ))}
+                  <CardContent className="text-sm space-y-3">
+                    {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
+                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                    
+                    {googleDetails?.rating && (
+                      <div className="flex items-center gap-2">
+                        <strong>별점:</strong> <StarRating rating={googleDetails.rating} />
                       </div>
                     )}
-                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+
+                    {googleDetails?.opening_hours && (
+                      <p><strong>영업:</strong> 
+                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
+                        </span>
+                      </p>
+                    )}
+
+                    {googleDetails?.phone && (
+                      <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
+                    )}
+
+                    {googleDetails?.photos && googleDetails.photos.length > 0 && (
+                      <div>
+                        <strong>사진:</strong>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          {googleDetails.photos.map((photoUrl, index) => (
+                            <img key={index} src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="rounded-md object-cover aspect-square" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {googleDetails?.reviews && googleDetails.reviews.length > 0 && (
+                      <div>
+                        <strong>리뷰 평점:</strong>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {googleDetails.reviews.map((review, index) => (
+                            <span key={index} className="text-xs bg-gray-100 p-1 rounded">{"★".repeat(review.rating)}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -427,3 +486,4 @@ export default function Home() {
     </main>
   );
 }
+

@@ -5,8 +5,16 @@ interface GooglePhoto {
   photo_reference: string;
 }
 
+interface GoogleReview {
+  rating: number;
+}
+
 interface GooglePlace {
   photos?: GooglePhoto[];
+  rating?: number;
+  opening_hours?: { open_now: boolean };
+  reviews?: GoogleReview[];
+  formatted_phone_number?: string;
 }
 
 interface GoogleFindPlaceResponse {
@@ -44,24 +52,35 @@ export async function GET(request: Request) {
 
     const placeId = findPlaceData.candidates[0].place_id;
 
-    // 2단계: Place ID로 장소 상세 정보(사진) 요청
-    const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=photos&key=${GOOGLE_API_KEY}`;
+    // 2단계: Place ID로 장소 상세 정보 요청 (fields 파라미터 수정)
+    const fields = 'photos,rating,opening_hours,reviews,formatted_phone_number';
+    const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${GOOGLE_API_KEY}&language=ko`;
+    
     const detailsRes = await fetch(detailsUrl);
     const detailsData: GooglePlaceDetailsResponse = await detailsRes.json();
 
-    if (detailsData.status !== 'OK' || !detailsData.result.photos) {
-      return NextResponse.json({ error: 'No photos found' }, { status: 404 });
+    if (detailsData.status !== 'OK' || !detailsData.result) {
+      return NextResponse.json({ error: 'No details found' }, { status: 404 });
     }
 
-    // 3단계: 사진 참조(photo_reference)를 실제 이미지 URL로 변환하여 반환
-    const photoUrls = detailsData.result.photos.slice(0, 3).map(photo => 
-      `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${GOOGLE_API_KEY}`
-    );
+    const { result } = detailsData;
 
-    return NextResponse.json({ photos: photoUrls });
+    // 3단계: 필요한 정보를 가공하여 반환
+    const photoUrls = result.photos ? result.photos.slice(0, 3).map(photo => 
+      `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${GOOGLE_API_KEY}`
+    ) : [];
+
+    return NextResponse.json({
+      photos: photoUrls,
+      rating: result.rating,
+      opening_hours: result.opening_hours,
+      reviews: result.reviews,
+      phone: result.formatted_phone_number,
+    });
 
   } catch (error) {
     console.error('Google API Error:', error);
     return NextResponse.json({ error: 'Failed to fetch details from Google API' }, { status: 500 });
   }
 }
+
