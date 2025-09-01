@@ -453,6 +453,11 @@ export default function Home() {
                       </CardHeader>
                       <CardContent className="p-3 pt-0 text-xs text-gray-700">
                         <p>{place.category_name}</p>
+                        <a href={place.place_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block w-full">
+                          <Button variant="outline" size="sm" className="w-full">
+                            카카오맵 상세보기
+                          </Button>
+                        </a>
                       </CardContent>
                     </Card>
                   ))}
@@ -466,9 +471,10 @@ export default function Home() {
               {recommendation && (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
+                    <CardTitle className="text-lg">{recommendation.place_name}</CardTitle>
+                    <p className="text-xs text-gray-500">Google Maps 제공</p>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-2">
+                  <CardContent className="text-sm space-y-2 pt-2">
                     {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
                     {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
                     {googleDetails?.rating && (
