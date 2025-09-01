@@ -5,15 +5,15 @@ interface GooglePhoto {
   photo_reference: string;
 }
 
-interface GoogleReview {
-  rating: number;
+interface GoogleOpeningHours {
+  open_now: boolean;
+  weekday_text?: string[];
 }
 
 interface GooglePlace {
   photos?: GooglePhoto[];
   rating?: number;
-  opening_hours?: { open_now: boolean };
-  reviews?: GoogleReview[];
+  opening_hours?: GoogleOpeningHours;
   formatted_phone_number?: string;
 }
 
@@ -38,9 +38,11 @@ export async function GET(request: Request) {
   }
 
   const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+  if (!GOOGLE_API_KEY) {
+    return NextResponse.json({ error: 'Google API key is not configured' }, { status: 500 });
+  }
 
   try {
-    // 1단계: 가게 이름과 좌표로 Google Place ID 찾기
     const findPlaceUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(name)}&inputtype=textquery&fields=place_id&locationbias=point:${lat},${lng}&key=${GOOGLE_API_KEY}`;
     
     const findPlaceRes = await fetch(findPlaceUrl);
@@ -52,8 +54,7 @@ export async function GET(request: Request) {
 
     const placeId = findPlaceData.candidates[0].place_id;
 
-    // 2단계: Place ID로 장소 상세 정보 요청 (fields 파라미터 수정)
-    const fields = 'photos,rating,opening_hours,reviews,formatted_phone_number';
+    const fields = 'photos,rating,opening_hours,formatted_phone_number';
     const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${GOOGLE_API_KEY}&language=ko`;
     
     const detailsRes = await fetch(detailsUrl);
@@ -65,8 +66,8 @@ export async function GET(request: Request) {
 
     const { result } = detailsData;
 
-    // 3단계: 필요한 정보를 가공하여 반환
-    const photoUrls = result.photos ? result.photos.slice(0, 3).map(photo => 
+    // (수정!) .slice(0, 3)을 제거하여 모든 사진 URL을 가져옵니다.
+    const photoUrls = result.photos ? result.photos.map(photo => 
       `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${GOOGLE_API_KEY}`
     ) : [];
 
@@ -74,7 +75,6 @@ export async function GET(request: Request) {
       photos: photoUrls,
       rating: result.rating,
       opening_hours: result.opening_hours,
-      reviews: result.reviews,
       phone: result.formatted_phone_number,
     });
 

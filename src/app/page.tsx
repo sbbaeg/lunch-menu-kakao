@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle, 
+  CardFooter 
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +21,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import dynamic from 'next/dynamic';
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
@@ -66,15 +79,15 @@ interface RouletteOption {
 }
 
 // Google API 응답 타입을 더 상세하게 정의
-interface GoogleReview {
-  rating: number;
+interface GoogleOpeningHours {
+  open_now: boolean;
+  weekday_text?: string[];
 }
 
 interface GoogleDetails {
   photos: string[];
   rating?: number;
-  opening_hours?: { open_now: boolean };
-  reviews?: GoogleReview[];
+  opening_hours?: GoogleOpeningHours;
   phone?: string;
 }
 
@@ -107,6 +120,19 @@ const StarRating = ({ rating }: { rating: number }) => {
       <span className="ml-2 text-sm font-bold">{rating.toFixed(1)}</span>
     </div>
   );
+};
+
+// 영업시간을 파싱하여 오늘 정보만 보여주는 헬퍼 함수
+const getTodaysOpeningHours = (openingHours?: GoogleOpeningHours): string | null => {
+  if (!openingHours?.weekday_text) {
+    return null;
+  }
+  const today = new Date().getDay(); // 0=일, 1=월, ..., 6=토
+  // Google API 요일 순서(월~일)와 JS Date 요일 순서(일~토)를 맞춤
+  const googleApiIndex = (today + 6) % 7;
+  const todaysHours = openingHours.weekday_text[googleApiIndex];
+  
+  return todaysHours ? todaysHours.substring(todaysHours.indexOf(':') + 2) : "정보 없음";
 };
 
 
@@ -166,7 +192,6 @@ export default function Home() {
     }
   }, [isMapReady]);
   
-  // 추천 가게가 정해지면 Google 상세 정보 가져오기
   useEffect(() => {
     if (!recommendation) return;
 
@@ -380,7 +405,8 @@ export default function Home() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm text-gray-700 space-y-1">
+                  {/* (수정!) 카드 내용의 줄 간격을 줄입니다. (space-y-1 -> space-y-0.5) */}
+                  <CardContent className="text-sm text-gray-700 space-y-0.5">
                     <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                     <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                   </CardContent>
@@ -410,11 +436,16 @@ export default function Home() {
                     )}
 
                     {googleDetails?.opening_hours && (
-                      <p><strong>영업:</strong> 
-                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
-                        </span>
-                      </p>
+                      <div className="flex flex-col">
+                        <p><strong>영업:</strong> 
+                          <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                            {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
+                          </span>
+                        </p>
+                        <p className="text-xs text-gray-500 ml-1">
+                          (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
+                        </p>
+                      </div>
                     )}
 
                     {googleDetails?.phone && (
@@ -424,22 +455,26 @@ export default function Home() {
                     {googleDetails?.photos && googleDetails.photos.length > 0 && (
                       <div>
                         <strong>사진:</strong>
-                        <div className="grid grid-cols-3 gap-2 mt-2">
-                          {googleDetails.photos.map((photoUrl, index) => (
-                            <img key={index} src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="rounded-md object-cover aspect-square" />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {googleDetails?.reviews && googleDetails.reviews.length > 0 && (
-                      <div>
-                        <strong>리뷰 평점:</strong>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {googleDetails.reviews.map((review, index) => (
-                            <span key={index} className="text-xs bg-gray-100 p-1 rounded">{"★".repeat(review.rating)}</span>
-                          ))}
-                        </div>
+                        <Carousel className="w-full max-w-xs mx-auto mt-2">
+                          <CarouselContent>
+                            {googleDetails.photos.map((photoUrl, index) => (
+                              <CarouselItem key={index}>
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <button className="w-full focus:outline-none">
+                                      <img src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" />
+                                    </button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-3xl h-[80vh] p-2">
+                                    <img src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="w-full h-full object-contain" />
+                                  </DialogContent>
+                                </Dialog>
+                              </CarouselItem>
+                            ))}
+                          </CarouselContent>
+                          <CarouselPrevious className="left-2" />
+                          <CarouselNext className="right-2" />
+                        </Carousel>
                       </div>
                     )}
                   </CardContent>
