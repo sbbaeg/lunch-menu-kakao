@@ -148,7 +148,7 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
   const [sortOrder, setSortOrder] = useState<'accuracy' | 'distance'>('accuracy');
-  const [resultCount, setResultCount] = useState<number>(5);
+  const [resultCount, setResultCount] = useState<number>(10);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -202,8 +202,7 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
-
-  // (추가!) '랜덤 추천'으로 돌아올 때 검색 개수를 초기화하는 로직
+  
   useEffect(() => {
     if (sortOrder === 'accuracy') {
       setResultCount(5);
@@ -423,7 +422,7 @@ export default function Home() {
                         <div className="border-t border-gray-200"></div>
                         <div>
                           <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
-                          <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                          <Slider id="result-count" defaultValue={[10]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
                         </div>
                       </>
                     )}
@@ -434,6 +433,32 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
+              {/* (수정!) 첫 번째 카드 표시 로직 */}
+              <Card className="w-full border shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xl h-8">
+                    {recommendation ? recommendation.place_name : "추천 음식점"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
+                  {recommendation ? (
+                    <>
+                      <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                      <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+                    </>
+                  ) : (
+                    restaurantList.length === 0 && <p>음식점을 추천받아보세요!</p>
+                  )}
+                </CardContent>
+                {recommendation && (
+                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
+                    <Button asChild className="w-full" variant="secondary"><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
+                    <Button asChild className="w-full" variant="secondary"><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
+                  </CardFooter>
+                )}
+              </Card>
+
+              {/* (수정!) '가까운 순' 목록 또는 Google 카드 표시 */}
               {sortOrder === 'distance' && restaurantList.length > 0 ? (
                 <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
                   {restaurantList.map(place => (
@@ -452,32 +477,17 @@ export default function Home() {
                     </Card>
                   ))}
                 </div>
-              ) : recommendation ? (
-                <Card className="w-full border shadow-sm">
-                  <CardHeader className="pb-2"><CardTitle className="text-xl h-8">{recommendation.place_name}</CardTitle></CardHeader>
-                  <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
-                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                  </CardContent>
-                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" variant="secondary" disabled={!recommendation}><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
-                    <Button asChild className="w-full" variant="secondary" disabled={!recommendation}><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
-                  </CardFooter>
-                </Card>
               ) : (
-                <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
-                  <p>음식점을 추천받아보세요!</p>
-                </Card>
-              )}
-              
-              {recommendation && (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
+                    <CardTitle className="text-lg">
+                      {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
                     {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
-                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                    {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                    
                     {googleDetails?.rating && (
                       <div className="flex items-center gap-1"><StarRating rating={googleDetails.rating} /></div>
                     )}
@@ -498,9 +508,9 @@ export default function Home() {
                             {googleDetails.photos.map((photoUrl, index) => (
                               <CarouselItem key={index}>
                                 <Dialog>
-                                  <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
+                                  <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
                                   <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                    <Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
+                                    <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
                                   </DialogContent>
                                 </Dialog>
                               </CarouselItem>
