@@ -111,11 +111,11 @@ const StarRating = ({ rating }: { rating: number }) => {
   return (
     <div className="flex items-center">
       {[...Array(fullStars)].map((_, i) => (
-        <span key={`full-${i}`} className="text-yellow-400">★</span>
+        <span key={`full-${i}`} className="text-yellow-400 text-lg">★</span>
       ))}
-      {halfStar && <span className="text-yellow-400">☆</span>}
+      {halfStar && <span className="text-yellow-400 text-lg">☆</span>}
       {[...Array(emptyStars)].map((_, i) => (
-        <span key={`empty-${i}`} className="text-gray-300">☆</span>
+        <span key={`empty-${i}`} className="text-gray-300 text-lg">☆</span>
       ))}
       <span className="ml-2 text-sm font-bold">{rating.toFixed(1)}</span>
     </div>
@@ -402,15 +402,17 @@ export default function Home() {
             <div className="w-full max-w-sm space-y-4">
               {recommendation && (
                 <Card className="w-full border shadow-sm">
-                  <CardHeader className="pb-3">
+                  {/* (수정!) 카드 헤더의 아래쪽 패딩(간격)을 줄입니다. */}
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
                   </CardHeader>
-                  {/* (수정!) 카드 내용의 줄 간격을 줄입니다. (space-y-1 -> space-y-0.5) */}
-                  <CardContent className="text-sm text-gray-700 space-y-0.5">
+                  {/* (수정!) 카드 내용의 위쪽 패딩을 줄이고, 줄 간격을 조절합니다. */}
+                  <CardContent className="pt-2 text-sm text-gray-700 space-y-1">
                     <p><strong>카테고리:</strong> {recommendation.category_name}</p>
                     <p><strong>주소:</strong> {recommendation.road_address_name}</p>
                   </CardContent>
-                  <CardFooter className="pt-3">
+                  {/* (수정!) 카드 푸터의 위쪽 패딩을 줄입니다. */}
+                  <CardFooter className="pt-2">
                     <Button asChild className="w-full" variant="secondary">
                       <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
                         카카오맵에서 상세보기
@@ -423,9 +425,11 @@ export default function Home() {
               {recommendation && (
                 <Card className="w-full border shadow-sm">
                   <CardHeader>
-                    <CardTitle className="text-lg">상세 정보 (Google)</CardTitle>
+                    {/* (수정!) 제목을 동적으로 변경합니다. */}
+                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-3">
+                  {/* (수정!) 카드 내용의 줄 간격을 조절합니다. */}
+                  <CardContent className="text-sm space-y-2">
                     {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
                     {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
                     
