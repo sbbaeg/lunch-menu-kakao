@@ -317,8 +317,9 @@ export default function Home() {
       <Card className="w-full max-w-6xl p-6 md:p-8 space-y-6">
         <h1 className="text-3xl font-bold text-center">오늘 뭐 먹지? (카카오 ver.)</h1>
         
-        <div className="flex flex-col md:flex-row gap-6 md:h-[600px]">
-          <div className="w-full h-80 md:h-full md:flex-grow rounded-lg overflow-hidden border shadow-sm">
+        {/* (수정!) 고정 높이(md:h-[600px])를 제거하여 내용에 따라 높이가 유연하게 변경되도록 합니다. */}
+        <div className="flex flex-col md:flex-row gap-6">
+          <div className="w-full h-80 md:h-[600px] md:flex-grow rounded-lg overflow-hidden border shadow-sm">
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
 
@@ -400,98 +401,94 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {recommendation && (
-                <Card className="w-full border shadow-sm">
-                  {/* (수정!) 카드 헤더의 아래쪽 패딩(간격)을 줄입니다. */}
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xl">{recommendation.place_name}</CardTitle>
-                  </CardHeader>
-                  {/* (수정!) 카드 내용의 위쪽 패딩을 줄이고, 줄 간격을 조절합니다. */}
-                  <CardContent className="pt-2 text-sm text-gray-700 space-y-1">
-                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                  </CardContent>
-                  {/* (수정!) 카드 푸터의 위쪽 패딩을 줄입니다. */}
-                  <CardFooter className="pt-2">
-                    <Button asChild className="w-full" variant="secondary">
-                      <a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">
-                        카카오맵에서 상세보기
-                      </a>
-                    </Button>
-                  </CardFooter>
-                </Card>
-              )}
+              {/* (수정!) 첫 번째 카드 표시 로직 */}
+              <Card className="w-full border shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xl h-8">
+                    {recommendation ? recommendation.place_name : "추천 음식점"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2 text-sm text-gray-700 space-y-1 h-16">
+                  {recommendation ? (
+                    <>
+                      <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                      <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+                    </>
+                  ) : (
+                    <p>음식점을 추천받아보세요!</p>
+                  )}
+                </CardContent>
+                <CardFooter className="pt-2">
+                  <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
+                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">
+                      카카오맵에서 상세보기
+                    </a>
+                  </Button>
+                </CardFooter>
+              </Card>
 
-              {recommendation && (
-                <Card className="w-full border shadow-sm">
-                  <CardHeader>
-                    {/* (수정!) 제목을 동적으로 변경합니다. */}
-                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
-                  </CardHeader>
-                  {/* (수정!) 카드 내용의 줄 간격을 조절합니다. */}
-                  <CardContent className="text-sm space-y-2">
-                    {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
-                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
-                    
-                    {googleDetails?.rating && (
-                      <div className="flex items-center gap-2">
-                        <strong>별점:</strong> <StarRating rating={googleDetails.rating} />
-                      </div>
-                    )}
+              {/* (수정!) 두 번째 카드 표시 로직 */}
+              <Card className="w-full border shadow-sm min-h-[200px]">
+                <CardHeader>
+                  <CardTitle className="text-lg">
+                    {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm space-y-3">
+                  {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
+                  {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                  
+                  {googleDetails?.rating && (
+                    <div className="flex items-center gap-2">
+                      <strong>별점:</strong> <StarRating rating={googleDetails.rating} />
+                    </div>
+                  )}
 
-                    {googleDetails?.opening_hours && (
-                      <div className="flex flex-col">
-                        <p><strong>영업:</strong> 
-                          <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                            {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
-                          </span>
-                        </p>
-                        <p className="text-xs text-gray-500 ml-1">
-                          (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
-                        </p>
-                      </div>
-                    )}
+                  {googleDetails?.opening_hours && (
+                    <div className="flex flex-col">
+                      <p><strong>영업:</strong> 
+                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-gray-500 ml-1">
+                        (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
+                      </p>
+                    </div>
+                  )}
 
-                    {googleDetails?.phone && (
-                      <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
-                    )}
+                  {googleDetails?.phone && (
+                    <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
+                  )}
 
-                    {googleDetails?.photos && googleDetails.photos.length > 0 && (
-                      <div>
-                        <strong>사진:</strong>
-                        <Carousel className="w-full max-w-xs mx-auto mt-2">
-                          <CarouselContent>
-                            {googleDetails.photos.map((photoUrl, index) => (
-                              <CarouselItem key={index}>
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <button className="w-full focus:outline-none">
-                                      <img src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" />
-                                    </button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                    <img src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} className="w-full h-full object-contain" />
-                                  </DialogContent>
-                                </Dialog>
-                              </CarouselItem>
-                            ))}
-                          </CarouselContent>
-                          <CarouselPrevious className="left-2" />
-                          <CarouselNext className="right-2" />
-                        </Carousel>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {!recommendation && (
-                <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
-                  <p>음식점을 추천받아보세요!</p>
-                </Card>
-              )}
+                  {googleDetails?.photos && googleDetails.photos.length > 0 && (
+                    <div>
+                      <strong>사진:</strong>
+                      <Carousel className="w-full max-w-xs mx-auto mt-2">
+                        <CarouselContent>
+                          {googleDetails.photos.map((photoUrl, index) => (
+                            <CarouselItem key={index}>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <button className="w-full focus:outline-none">
+                                    <img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" />
+                                  </button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-3xl h-[80vh] p-2">
+                                  <img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="w-full h-full object-contain" />
+                                </DialogContent>
+                              </Dialog>
+                            </CarouselItem>
+                          ))}
+                        </CarouselContent>
+                        <CarouselPrevious className="left-2" />
+                        <CarouselNext className="right-2" />
+                      </Carousel>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-
           </div>
         </div>
       </Card>
