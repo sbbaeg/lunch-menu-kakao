@@ -202,12 +202,6 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
-  
-  useEffect(() => {
-    if (sortOrder === 'accuracy') {
-      setResultCount(5);
-    }
-  }, [sortOrder]);
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -296,21 +290,16 @@ export default function Home() {
   };
 
   const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
-    if(sortOrder === 'accuracy') {
-        setRestaurantList([]);
-    }
     setRecommendation(place);
 
     if (mapInstance.current) {
-      if(sortOrder === 'accuracy') {
-        markers.current.forEach(marker => marker.setMap(null));
-        markers.current = [];
-      }
       if (polylineInstance.current) polylineInstance.current.setMap(null);
 
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       
-      if(sortOrder === 'accuracy') {
+      if (sortOrder === 'accuracy') {
+        markers.current.forEach(marker => marker.setMap(null));
+        markers.current = [];
         const marker = new window.kakao.maps.Marker({ position: placePosition });
         marker.setMap(mapInstance.current);
         markers.current.push(marker);
@@ -328,7 +317,6 @@ export default function Home() {
   
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
-    setRecommendation(null);
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       const marker = new window.kakao.maps.Marker({ position: placePosition });
@@ -336,7 +324,8 @@ export default function Home() {
       markers.current.push(marker);
     });
     if (places.length > 0) {
-      updateMapAndCard(places[0], currentLoc);
+      // (수정!) 목록의 첫 번째 항목을 기본 '선택된' 항목으로 지정합니다.
+      setRecommendation(places[0]);
     }
   };
 
@@ -433,33 +422,10 @@ export default function Home() {
             </div>
             
             <div className="w-full max-w-sm space-y-4">
-              {/* (수정!) 첫 번째 카드 표시 로직 */}
-              <Card className="w-full border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xl h-8">
-                    {recommendation ? recommendation.place_name : "추천 음식점"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
-                  {recommendation ? (
-                    <>
-                      <p><strong>카테고리:</strong> {recommendation.category_name}</p>
-                      <p><strong>주소:</strong> {recommendation.road_address_name}</p>
-                    </>
-                  ) : (
-                    restaurantList.length === 0 && <p>음식점을 추천받아보세요!</p>
-                  )}
-                </CardContent>
-                {recommendation && (
-                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
-                    <Button asChild className="w-full" variant="secondary"><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
-                    <Button asChild className="w-full" variant="secondary"><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
-                  </CardFooter>
-                )}
-              </Card>
-
-              {/* (수정!) '가까운 순' 목록 또는 Google 카드 표시 */}
-              {sortOrder === 'distance' && restaurantList.length > 0 ? (
+              {/* (수정!) UI 렌더링 로직을 명확하게 분리합니다. */}
+              
+              {/* 1. '가까운 순' 목록을 표시하는 경우 */}
+              {sortOrder === 'distance' && restaurantList.length > 0 && (
                 <div className="space-y-2 max-h-[480px] overflow-y-auto pr-2">
                   {restaurantList.map(place => (
                     <Card 
@@ -477,17 +443,32 @@ export default function Home() {
                     </Card>
                   ))}
                 </div>
-              ) : (
+              )}
+
+              {/* 2. '랜덤 추천' 결과를 표시하는 경우 */}
+              {sortOrder === 'accuracy' && recommendation && (
+                <Card className="w-full border shadow-sm">
+                  <CardHeader className="pb-2"><CardTitle className="text-xl h-8">{recommendation.place_name}</CardTitle></CardHeader>
+                  <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
+                    <p><strong>카테고리:</strong> {recommendation.category_name}</p>
+                    <p><strong>주소:</strong> {recommendation.road_address_name}</p>
+                  </CardContent>
+                  <CardFooter className="pt-2 grid grid-cols-2 gap-2">
+                    <Button asChild className="w-full" variant="secondary"><a href={recommendation.place_url} target="_blank" rel="noopener noreferrer">카카오맵</a></Button>
+                    <Button asChild className="w-full" variant="secondary"><a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(`${recommendation.place_name} ${recommendation.road_address_name}`)}`} target="_blank" rel="noopener noreferrer">네이버</a></Button>
+                  </CardFooter>
+                </Card>
+              )}
+
+              {/* 3. Google 상세 정보 카드는 recommendation이 있을 때 항상 표시 */}
+              {recommendation ? (
                 <Card className="w-full border shadow-sm min-h-[200px]">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">
-                      {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
-                    </CardTitle>
+                    <CardTitle className="text-lg">{recommendation.place_name} (Google)</CardTitle>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
                     {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
-                    {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
-                    
+                    {!isDetailsLoading && !googleDetails && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
                     {googleDetails?.rating && (
                       <div className="flex items-center gap-1"><StarRating rating={googleDetails.rating} /></div>
                     )}
@@ -508,9 +489,9 @@ export default function Home() {
                             {googleDetails.photos.map((photoUrl, index) => (
                               <CarouselItem key={index}>
                                 <Dialog>
-                                  <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
+                                  <DialogTrigger asChild><button className="w-full focus:outline-none"><Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
                                   <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                    <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
+                                    <Image src={photoUrl} alt={`${recommendation.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
                                   </DialogContent>
                                 </Dialog>
                               </CarouselItem>
@@ -523,6 +504,13 @@ export default function Home() {
                     )}
                   </CardContent>
                 </Card>
+              ) : (
+                 // 4. 아무것도 없을 때만 초기 Placeholder 표시
+                 restaurantList.length === 0 && !recommendation && (
+                    <Card className="w-full flex items-center justify-center h-40 text-gray-500 border shadow-sm">
+                      <p>음식점을 추천받아보세요!</p>
+                    </Card>
+                 )
               )}
             </div>
           </div>
