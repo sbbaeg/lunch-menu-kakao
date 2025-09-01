@@ -148,7 +148,7 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDistance, setSelectedDistance] = useState<string>('800');
   const [sortOrder, setSortOrder] = useState<'accuracy' | 'distance'>('accuracy');
-  const [resultCount, setResultCount] = useState<number>(10);
+  const [resultCount, setResultCount] = useState<number>(5);
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<KakaoMap | null>(null);
@@ -202,6 +202,13 @@ export default function Home() {
     };
     fetchGoogleDetails();
   }, [recommendation]);
+
+  // (추가!) '랜덤 추천'으로 돌아올 때 검색 개수를 초기화하는 로직
+  useEffect(() => {
+    if (sortOrder === 'accuracy') {
+      setResultCount(5);
+    }
+  }, [sortOrder]);
 
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
@@ -290,14 +297,12 @@ export default function Home() {
   };
 
   const updateMapAndCard = (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
-    // (수정!) 랜덤 추천 시에는 목록을 확실히 비워줍니다.
     if(sortOrder === 'accuracy') {
         setRestaurantList([]);
     }
     setRecommendation(place);
 
     if (mapInstance.current) {
-      // '가까운 순' 목록에서는 여러 마커를 유지해야 하므로, 여기서는 마커를 지우지 않습니다.
       if(sortOrder === 'accuracy') {
         markers.current.forEach(marker => marker.setMap(null));
         markers.current = [];
@@ -306,7 +311,6 @@ export default function Home() {
 
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
       
-      // '랜덤 추천' 시에만 새로운 마커를 추가합니다.
       if(sortOrder === 'accuracy') {
         const marker = new window.kakao.maps.Marker({ position: placePosition });
         marker.setMap(mapInstance.current);
@@ -325,7 +329,6 @@ export default function Home() {
   
   const displayMarkers = (places: KakaoPlaceItem[], currentLoc: KakaoLatLng) => {
     if (!mapInstance.current) return;
-    // (수정!) 목록을 표시할 때는 단일 추천 상태를 null로 설정합니다.
     setRecommendation(null);
     places.forEach(place => {
       const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
@@ -333,9 +336,8 @@ export default function Home() {
       marker.setMap(mapInstance.current);
       markers.current.push(marker);
     });
-    // (수정!) 목록의 첫 번째 항목을 '선택된 항목'으로 지정합니다.
     if (places.length > 0) {
-      setRecommendation(places[0]);
+      updateMapAndCard(places[0], currentLoc);
     }
   };
 
@@ -350,7 +352,6 @@ export default function Home() {
     };
   });
   
-  // (수정!) 클릭 핸들러를 별도로 분리합니다.
   const handleListItemClick = (place: KakaoPlaceItem) => {
     if (userLocation) {
         mapInstance.current?.setCenter(new window.kakao.maps.LatLng(Number(place.y), Number(place.x)));
@@ -422,7 +423,7 @@ export default function Home() {
                         <div className="border-t border-gray-200"></div>
                         <div>
                           <Label htmlFor="result-count" className="text-lg font-semibold">검색 개수: {resultCount}개</Label>
-                          <Slider id="result-count" defaultValue={[10]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
+                          <Slider id="result-count" defaultValue={[5]} value={[resultCount]} onValueChange={(value) => setResultCount(value[0])} min={5} max={15} step={1} className="mt-2" />
                         </div>
                       </>
                     )}
