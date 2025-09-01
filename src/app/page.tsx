@@ -21,7 +21,16 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+// (수정!) Carousel 컴포넌트들을 import 합니다.
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import dynamic from 'next/dynamic';
+import Image from 'next/image'; // (추가!) Next.js 이미지 컴포넌트 import
 
 const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Wheel), { ssr: false });
 
@@ -39,24 +48,16 @@ type KakaoLatLng = {
   getLat: () => number;
   getLng: () => number;
 };
-type KakaoRoadview = {
-  setPanoId: (panoId: number, position: KakaoLatLng) => void;
-};
-type KakaoRoadviewClient = {
-  getNearestPanoId: (position: KakaoLatLng, radius: number, callback: (panoId: number | null) => void) => void;
-};
 
 declare global {
   interface Window {
     kakao: {
       maps: {
         load: (callback: () => void) => void;
-        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; draggable?: boolean; zoomable?: boolean; }) => KakaoMap;
+        Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number; }) => KakaoMap;
         LatLng: new (lat: number, lng: number) => KakaoLatLng;
         Marker: new (options: { position: KakaoLatLng; }) => KakaoMarker;
         Polyline: new (options: { path: KakaoLatLng[]; strokeColor: string; strokeWeight: number; strokeOpacity: number; }) => KakaoPolyline;
-        Roadview: new (container: HTMLElement) => KakaoRoadview;
-        RoadviewClient: new () => KakaoRoadviewClient;
       };
     };
   }
@@ -66,8 +67,8 @@ interface KakaoPlaceItem {
   place_name: string;
   category_name: string;
   road_address_name: string;
-  x: string;
-  y: string;
+  x: string; // lng
+  y: string; // lat
   place_url: string;
 }
 
@@ -278,7 +279,6 @@ export default function Home() {
     }
   };
   
-  // (수정!) 룰렛 데이터에 색상 정보 추가
   const rouletteData: RouletteOption[] = rouletteItems.map((item, index) => {
     const colors = ['#FF6B6B', '#FFD966', '#96F291', '#66D9E8', '#63A4FF'];
     return { 
@@ -296,7 +296,7 @@ export default function Home() {
         <h1 className="text-3xl font-bold text-center">오늘 뭐 먹지? (카카오 ver.)</h1>
         
         <div className="flex flex-col md:flex-row gap-6">
-          <div className="w-full h-80 md:h-[600px] md:flex-grow rounded-lg overflow-hidden border shadow-sm">
+          <div className="w-full h-80 md:h-auto md:min-h-[600px] md:flex-grow rounded-lg overflow-hidden border shadow-sm">
             <div ref={mapContainer} className="w-full h-full"></div>
           </div>
           <div className="w-full md:w-1/3 flex flex-col items-center md:justify-start space-y-4">
@@ -353,7 +353,7 @@ export default function Home() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xl h-8">{recommendation ? recommendation.place_name : "추천 음식점"}</CardTitle>
                 </CardHeader>
-                <CardContent className="pt-2 text-sm text-gray-700 space-y-1 min-h-[72px]">
+                <CardContent className="pt-2 text-sm text-gray-700 space-y-0.5 min-h-[56px]">
                   {recommendation ? (
                     <>
                       <p><strong>카테고리:</strong> {recommendation.category_name}</p>
@@ -361,31 +361,53 @@ export default function Home() {
                     </>
                   ) : <p>음식점을 추천받아보세요!</p>}
                 </CardContent>
-                <CardFooter className="pt-2">
+                <CardFooter className="pt-2 grid grid-cols-2 gap-2">
                   <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
-                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">카카오맵에서 상세보기</a>
+                    <a href={recommendation?.place_url} target="_blank" rel="noopener noreferrer">
+                      카카오맵
+                    </a>
+                  </Button>
+                  <Button asChild className="w-full" variant="secondary" disabled={!recommendation}>
+                    <a href={`https://search.naver.com/search.naver?query=${encodeURIComponent(recommendation?.place_name || "")}`} target="_blank" rel="noopener noreferrer">
+                      네이버
+                    </a>
                   </Button>
                 </CardFooter>
               </Card>
+              
               <Card className="w-full border shadow-sm min-h-[200px]">
-                <CardHeader>
-                  <CardTitle className="text-lg">{recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}</CardTitle>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">
+                    {recommendation ? `${recommendation.place_name} (Google)` : "상세 정보 (Google)"}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm space-y-3">
+                <CardContent className="text-sm space-y-2">
                   {isDetailsLoading && <p>상세 정보를 불러오는 중...</p>}
                   {!isDetailsLoading && !googleDetails && recommendation && <p className="text-gray-500">Google에서 추가 정보를 찾지 못했습니다.</p>}
+                  
                   {googleDetails?.rating && (
-                    <div className="flex items-center gap-2"><strong>별점:</strong> <StarRating rating={googleDetails.rating} /></div>
-                  )}
-                  {googleDetails?.opening_hours && (
-                    <div className="flex flex-col">
-                      <p><strong>영업:</strong> <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>{googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}</span></p>
-                      <p className="text-xs text-gray-500 ml-1">(오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})</p>
+                    <div className="flex items-center gap-1">
+                      <StarRating rating={googleDetails.rating} />
                     </div>
                   )}
+
+                  {googleDetails?.opening_hours && (
+                    <div className="flex flex-col">
+                      <p><strong>영업:</strong> 
+                        <span className={googleDetails.opening_hours.open_now ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                          {googleDetails.opening_hours.open_now ? ' 영업 중' : ' 영업 종료'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-gray-500 ml-1">
+                        (오늘: {getTodaysOpeningHours(googleDetails.opening_hours)})
+                      </p>
+                    </div>
+                  )}
+
                   {googleDetails?.phone && (
                     <p><strong>전화:</strong> <a href={`tel:${googleDetails.phone}`} className="text-blue-600 hover:underline">{googleDetails.phone}</a></p>
                   )}
+
                   {googleDetails?.photos && googleDetails.photos.length > 0 && (
                     <div>
                       <strong>사진:</strong>
@@ -394,9 +416,13 @@ export default function Home() {
                           {googleDetails.photos.map((photoUrl, index) => (
                             <CarouselItem key={index}>
                               <Dialog>
-                                <DialogTrigger asChild><button className="w-full focus:outline-none"><img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="object-cover aspect-video rounded-md" /></button></DialogTrigger>
+                                <DialogTrigger asChild><button className="w-full focus:outline-none">
+                                  {/* (수정!) <img>를 Next.js의 <Image>로 교체 */}
+                                  <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} width={400} height={225} className="object-cover aspect-video rounded-md" />
+                                </button></DialogTrigger>
                                 <DialogContent className="max-w-3xl h-[80vh] p-2">
-                                  <img src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} className="w-full h-full object-contain" />
+                                  {/* (수정!) <img>를 Next.js의 <Image>로 교체 */}
+                                  <Image src={photoUrl} alt={`${recommendation?.place_name} photo ${index + 1}`} fill style={{ objectFit: 'contain' }} />
                                 </DialogContent>
                               </Dialog>
                             </CarouselItem>
@@ -425,13 +451,12 @@ export default function Home() {
                 data={rouletteData}
                 onStopSpinning={() => {
                   setMustSpin(false);
-                  // (수정!) 룰렛이 멈춘 후 2초 뒤에 팝업이 닫히도록 설정
                   setTimeout(() => {
                     setIsRouletteOpen(false);
                     if(userLocation) {
                       updateMapAndCard(rouletteItems[prizeNumber], userLocation);
                     }
-                  }, 2000); // 2초 지연
+                  }, 2000);
                 }}
               />
             )}
