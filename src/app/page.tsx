@@ -37,7 +37,6 @@ const Wheel = dynamic(() => import('react-custom-roulette').then(mod => mod.Whee
 // 타입 정의
 type KakaoMap = {
   setCenter: (latlng: KakaoLatLng) => void;
-  relayout: () => void;
 };
 type KakaoMarker = {
   setMap: (map: KakaoMap | null) => void;
@@ -222,14 +221,6 @@ export default function Home() {
     fetchGoogleDetails();
   }, [recommendation]);
 
-  useEffect(() => {
-    if (mapInstance.current) {
-      setTimeout(() => {
-        mapInstance.current?.relayout();
-      }, 100);
-    }
-  }, [googleDetails, isDetailsLoading, recommendation]);
-
   const getNearbyRestaurants = async (latitude: number, longitude: number): Promise<KakaoPlaceItem[]> => {
     const query = selectedCategories.length > 0 ? selectedCategories.join(',') : '음식점';
     const radius = selectedDistance;
@@ -316,24 +307,16 @@ export default function Home() {
   };
 
   const updateMapAndCard = async (place: KakaoPlaceItem, currentLoc: KakaoLatLng) => {
-    setRecommendation(place); // (핵심 수정!) 카드 정보 업데이트를 여기서 수행
+    setRecommendation(place);
 
     if (mapInstance.current) {
       const imageSize = new window.kakao.maps.Size(24, 35);
       const blueMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_s.png', imageSize);
       const redMarkerImage = new window.kakao.maps.MarkerImage('https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png', imageSize);
       
-      // (핵심 수정!) 룰렛 후에는 markers 배열이 비어있으므로, 단일 마커를 새로 생성합니다.
-      if (markers.current.length === 0) {
-        const placePosition = new window.kakao.maps.LatLng(Number(place.y), Number(place.x));
-        const marker = new window.kakao.maps.Marker({ position: placePosition, image: redMarkerImage });
-        marker.setMap(mapInstance.current);
-        markers.current.push({ id: place.id, marker });
-      } else {
-        markers.current.forEach(item => {
-          item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
-        });
-      }
+      markers.current.forEach(item => {
+        item.marker.setImage(item.id === place.id ? redMarkerImage : blueMarkerImage);
+      });
 
       if (polylineInstance.current) polylineInstance.current.setMap(null);
       
@@ -394,7 +377,8 @@ export default function Home() {
         updateMapAndCard(place, userLocation);
     }
   };
-
+  
+  // (수정!) 길 안내 URL 변수들을 return 문 바로 위로 이동
   const googleMapsUrl = userLocation && recommendation ? 
     `https://www.google.com/maps/dir/?api=1&origin=${userLocation.getLat()},${userLocation.getLng()}&destination=${recommendation.y},${recommendation.x}&travelmode=walking` 
     : '#';
